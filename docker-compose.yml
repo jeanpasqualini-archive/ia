@@ -1,0 +1,6 @@
+app:
+    build: ./
+    volumes:
+        - "$PWD:/app"
+        - "./ncurses.ini:/etc/php5/cli/conf.d/ncurses.ini"
+    working_dir: /app
