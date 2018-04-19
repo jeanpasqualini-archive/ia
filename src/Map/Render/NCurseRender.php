@@ -13,6 +13,7 @@ use CurseFramework\Cursor;
 use CurseFramework\Ncurses;
 use CurseFramework\Window;
 use Map\Builder\MapBuilder;
+use Map\Render\Curse\LogView;
 use Map\Render\Curse\Map;
 use Map\Render\Curse\Statictic;
 use Map\Render\Curse\Timer;
@@ -34,6 +35,10 @@ class NCurseRender extends Ncurses implements MapRenderInterface {
 
     protected $timer;
 
+    protected $loggerView;
+
+    protected $logger;
+
     protected static $instance;
 
     public function getWindow()
@@ -44,6 +49,11 @@ class NCurseRender extends Ncurses implements MapRenderInterface {
     public static function getInstance()
     {
         return self::$instance;
+    }
+
+    public function setLogger($logger)
+    {
+        $this->logger = $logger;
     }
 
     public function __construct($line, $colonne)
@@ -61,20 +71,23 @@ class NCurseRender extends Ncurses implements MapRenderInterface {
         $this->window->border();
         $this->window->getMaxYX($y, $x);
 
-        $this->timer = new Timer(3, 10, 5, 5);
+        $this->timer = new Timer(3, 10, 5, 1);
         $this->timer->border();
 
-        $this->listbox = new Listbox($this->window, 5, 20, 5, 20);
+        $this->listbox = new Listbox($this->window, 5, 20, 10, 1);
         $this->listbox->border();
         $this->listbox->setItems(array(
             array("title" => "Quitter", "bold" => false),
             array("title" => "Regenerer map", "bold" => false),
         ));
 
-        $this->statistic = new Statictic($this->window, 5, 20, 10, 30);
+        $this->statistic = new Statictic($this->window, 5, 20, 20, 1);
         $this->statistic->border();
 
-        $this->map = new Map($y/2, $x/2, ($y/2/2), ($x/2/2));
+        $this->loggerView = new LogView(10, $x - 2, $y - 12, 1);
+        $this->loggerView->border();
+
+        $this->map = new Map($y/2, $x/2, 5, ($x/2/2));
         $this->map->border();
 
         $this->cursor = new Cursor(0, 0, false);
@@ -106,6 +119,10 @@ class NCurseRender extends Ncurses implements MapRenderInterface {
         $this->timer->setChanged(true);
         $this->timer->draw();
         $this->timer->refresh();
+
+        $this->loggerView->setChanged(true);
+        $this->loggerView->draw();
+        $this->loggerView->refresh();
 
         //$this->listbox->setChanged(false);
         $this->listbox->drawList();

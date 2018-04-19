@@ -29,7 +29,7 @@ class CatIA implements IAInterface
         $this->chat->getEstomac()->getEventDispatcher()->addListener("full", array($this, "onEstomacFull"));
     }
 
-    public function onEstomacHungry(Event $event, $eventName, EventDispatcher $event)
+    public function onEstomacHungry(Event $event, $eventName, EventDispatcher $eventDispatcher)
     {
         if(!empty($this->objectifs)) return;
 
