@@ -9,6 +9,7 @@
 namespace Map\Render;
 
 
-interface MapRenderInterface {
+use Psr\Log\LoggerInterface;
 
+interface MapRenderInterface {
 }

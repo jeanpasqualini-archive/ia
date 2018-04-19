@@ -12,12 +12,14 @@ namespace Map\Render;
 use CurseFramework\Cursor;
 use CurseFramework\Ncurses;
 use CurseFramework\Window;
+use Logger\BufferLogger;
 use Map\Builder\MapBuilder;
 use Map\Render\Curse\LogView;
 use Map\Render\Curse\Map;
 use Map\Render\Curse\Statictic;
 use Map\Render\Curse\Timer;
 use CurseFramework\Listbox;
+use Psr\Log\LoggerInterface;
 
 class NCurseRender extends Ncurses implements MapRenderInterface {
 
@@ -51,12 +53,7 @@ class NCurseRender extends Ncurses implements MapRenderInterface {
         return self::$instance;
     }
 
-    public function setLogger($logger)
-    {
-        $this->logger = $logger;
-    }
-
-    public function __construct($line, $colonne)
+    public function __construct($line, $colonne, LoggerInterface $logger)
     {
         parent::__construct();
 
@@ -84,8 +81,11 @@ class NCurseRender extends Ncurses implements MapRenderInterface {
         $this->statistic = new Statictic($this->window, 5, 20, 20, 1);
         $this->statistic->border();
 
+        $bufferLogger = new BufferLogger();
+        $logger->addLogger($bufferLogger);
         $this->loggerView = new LogView(10, $x - 2, $y - 12, 1);
         $this->loggerView->border();
+        $this->loggerView->setBufferLog($bufferLogger);
 
         $this->map = new Map($y/2, $x/2, 5, ($x/2/2));
         $this->map->border();

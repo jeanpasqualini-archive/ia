@@ -3,8 +3,10 @@ namespace Map\World;
 use IA\ApplicationIA;
 use InputController\KeyboardInputController;
 use Logger\FileLogger;
+use Logger\MultipleLogger;
 use Map\Builder\MapBuilder;
 use Memory\MemoryManager;
+use Psr\Log\LoggerInterface;
 use Psr\Log\LogLevel;
 use Snapshot\Instant;
 use Symfony\Component\EventDispatcher\EventDispatcher;
@@ -46,7 +48,7 @@ class World
         return self::$instance;
     }
 
-    public function __construct(MapBuilder $map, array $players = array())
+    public function __construct(MapBuilder $map, array $players = array(), LoggerInterface $logger = null)
     {
         self::$instance = $this;
 
@@ -62,7 +64,8 @@ class World
 
         $this->inputController = new KeyboardInputController();
 
-        $this->logger = new FileLogger($this->getLogPath()."dev.log");
+        $this->logger = !empty($logger) ? $logger : new MultipleLogger();
+        $this->logger->addLogger(new FileLogger($this->getLogPath()."dev.log"));
 
         $this->eventDispatcher = new EventDispatcher();
     }

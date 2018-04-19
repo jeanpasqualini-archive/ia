@@ -9,6 +9,7 @@
 namespace Command;
 
 
+use Logger\MultipleLogger;
 use Map\Builder\MapBuilder;
 use Map\Location\Direction;
 use Map\Provider\FileMapProvider;
@@ -48,7 +49,8 @@ class ApplicationCommand extends Command
             $symfonyStyle = new SymfonyStyle($input, $output);
             $symfonyStyle->title("IA");
 
-            $mapRender = (!$input->getOption("curse")) ? new ConsoleMapRender($output, true) : new NCurseRender($line, $colonne);
+            $logger = new MultipleLogger();
+            $mapRender = (!$input->getOption("curse")) ? new ConsoleMapRender($output, true) : new NCurseRender($line, $colonne, $logger);
 
             if(!$input->getOption("load-dump"))
             {
@@ -61,7 +63,7 @@ class ApplicationCommand extends Command
                 $world = new World($map, array(
                     $this->addChat(5, 5),
                     $this->addChat(10, 10)
-                ));
+                ), $logger);
             }
             else
             {

@@ -11,6 +11,7 @@ namespace Map\Render;
 use Command\NCursesOutput;
 use Map\Builder\MapBuilder;
 use Map\Map;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\Console\Output\BufferedOutput;
 use Symfony\Component\Console\Output\OutputInterface;
 
@@ -29,6 +30,10 @@ class ConsoleMapRender implements MapRenderInterface
         $this->standardOutput = ($buffer) ? $output : null;
 
         $this->output = ($buffer) ? new BufferedOutput() : $output;
+    }
+
+    public function setLogger(LoggerInterface $logger)
+    {
     }
 
     public function getSize()
