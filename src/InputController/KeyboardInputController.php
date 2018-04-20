@@ -10,6 +10,7 @@ namespace InputController;
 
 
 use Map\Location\Direction;
+use Psr\Log\LoggerInterface;
 
 class KeyboardInputController {
 
@@ -17,9 +18,13 @@ class KeyboardInputController {
 
     public $key;
 
-    public function __construct()
+    /** @var LoggerInterface */
+    private $logger;
+
+    public function __construct(LoggerInterface $logger)
     {
         $this->direction = new Direction(0, 0);
+        $this->logger = $logger;
     }
 
     public function getDirection()
@@ -39,6 +44,7 @@ class KeyboardInputController {
         stream_set_timeout($stdin, 0, 200);
 
         $key = fgets($stdin, 2);
+        $directionActive = true;
 
         // No input right now
         if (!empty($key)) {
@@ -60,9 +66,12 @@ class KeyboardInputController {
                     $this->direction = new Direction(0, 1);
                     break;
                 default:
+                    $directionActive = false;
                     $this->direction = new Direction(0, 0);
                     break;
             }
         }
+
+       // $this->logger->info(sprintf('KEY PRESSED %s', $key));
     }
 }

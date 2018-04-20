@@ -55,7 +55,7 @@ class Chat extends Player implements PlayerHasEstomac
 
         $this->getPosition()->setDirection($world->getInputController()->getDirection());
 
-        $this->estomac->update($world);
+        //$this->estomac->update($world);
     }
 
     public function __sleep()

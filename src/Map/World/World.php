@@ -62,7 +62,7 @@ class World
 
         $this->memoryManager = new MemoryManager();
 
-        $this->inputController = new KeyboardInputController();
+        $this->inputController = new KeyboardInputController($logger);
 
         $this->logger = !empty($logger) ? $logger : new MultipleLogger();
         $this->logger->addLogger(new FileLogger($this->getLogPath()."dev.log"));
