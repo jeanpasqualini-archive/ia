@@ -56,11 +56,11 @@ class Map extends Window {
     public function format($item)
     {
         $mapping = array(
-            MapBuilder::HERBE => '✿',
-            MapBuilder::FLEUR => '✿',
-            MapBuilder::ARBRE => '↟',
-            MapBuilder::EAU => '∼',
-            "P" => '➊',
+            MapBuilder::HERBE => '░',
+            MapBuilder::FLEUR => 'φ',
+            MapBuilder::ARBRE => '|',
+            MapBuilder::EAU => '-',
+            "P" => '■',
         );
 
         return (isset($mapping[$item]) ? $mapping[$item] : $item);

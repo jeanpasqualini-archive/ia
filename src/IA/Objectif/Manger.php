@@ -36,7 +36,7 @@ class Manger {
         {
             $item = $world->getMap()->getItem($this->path->getDestination());
 
-            if(1 == 1 || $item == MapBuilder::FLEUR)
+            if($item == MapBuilder::FLEUR)
             {
                 $world->getLogger()->log(LogLevel::INFO, "le chat mange");
 

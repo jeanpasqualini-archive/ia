@@ -1,14 +1,12 @@
-FROM ubuntu:14.04
+FROM caiotava/docker-php7-ncurses
 
-RUN apt-get update
-RUN apt-get install -y php5-dev
-RUN apt-get install -y ncurses-dev
-RUN apt-get install -y libncursesw5-dev
-RUN apt-get install -y php-pear
-RUN apt-get install -y build-essential
-RUN pecl install ncurses
+RUN apt-get clean && apt-get update && apt-get install -y locales
 
-RUN locale-gen en_US.UTF-8
-ENV LANG en_US.UTF-8
-ENV LANGUAGE en_US:en
-ENV LC_ALL en_US.UTF-8
+COPY ./default_locale /etc/default/locale
+RUN chmod 0755 /etc/default/locale
+
+ENV LC_ALL=fr_FR.UTF-8
+ENV LANG=fr_FR.UTF-8
+ENV LANGUAGE=fr:en
+
+RUN locale-gen fr_FR.UTF-8

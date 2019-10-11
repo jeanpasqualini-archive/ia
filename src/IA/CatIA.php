@@ -43,7 +43,7 @@ class CatIA implements IAInterface
 
     public function update(World $world)
     {
-        //$this->chat->move();
+        $this->chat->move();
 
         foreach($this->objectifs as $objectif)
         {
