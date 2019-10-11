@@ -20,6 +20,8 @@ use Map\Player\PlayerInterface;
 use Map\Render\MapRenderInterface;
 use Map\Render\NCurseRender;
 use Map\World\World;
+use Psr\Log\LogLevel;
+use Snapshot\Instant;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -55,16 +57,7 @@ class ApplicationCommand extends Command
 
             if(!$input->getOption("load-dump"))
             {
-                $sizeMap = $mapRender->getSize();
-
-                $mapProvider = ($input->getOption("map")) ? new FileMapProvider($input->getOption("map")) : new RandomMapProvider($sizeMap["y"], $sizeMap["x"]);
-
-                $map = new MapBuilder($mapProvider->getMap());
-
-                $world = new World($map, array(
-                    $this->addChat(5, 5),
-                    $this->addChat(10, 10)
-                ), $logger);
+                $world = $this->createWorld($input, $mapRender, $logger);
             }
             else
             {
@@ -82,14 +75,57 @@ class ApplicationCommand extends Command
                 $world = unserialize(file_get_contents($file))->getFlashMemory()->all()[0]->getData();
             }
 
+            $this->render($mapRender, $world);
+
             while(1) {
                 if ($input->getOption('step-by-step')) {
+                    $world->getMemoryManager()->getFlashMemory()->addInstant(
+                        new Instant($world)
+                    );
+
+                    $world->getLogger()->info(sprintf(
+                        'nombre instantané : %d',
+                        $world->getMemoryManager()->getFlashMemory()->count()
+                    ));
+
                     while ($world->getInputController()->getKey() != 'n') {
                         $world->getInputController()->update();
                         usleep(200);
+
+                        if($world->getInputController()->getKey() == "x")
+                        {
+                            $hash = $world->getMemoryManager()->persist();
+                            $world->getLogger()->log(LogLevel::INFO, 'persist snapshop memory on hash '.$hash);
+
+                            $this->render($mapRender, $world);
+                        }
+
+                        if($world->getInputController()->getKey() == "r")
+                        {
+                            $world->getLogger()->log(LogLevel::INFO, 'soft reload game');
+                            $world = $this->createWorld(
+                                $input,
+                                $mapRender,
+                                $logger
+                            );
+
+                            $this->render($mapRender, $world);
+                        }
+
+                        if($world->getInputController()->getKey() == "q")
+                        {
+                            return;
+                        }
+
+                        if($world->getInputController()->getKey() == "p")
+                        {
+                            $world = unserialize($world->getMemoryManager()->getFlashMemory()->all()[0]);
+                        }
                     }
                 }
-                $this->render($mapRender, $world);
+                if ($this->update($world)) {
+                    $this->render($mapRender, $world);
+                }
             }
         }
         catch(\Exception $e)
@@ -114,19 +150,12 @@ class ApplicationCommand extends Command
         return $chat;
     }
 
+    public function update(World $world) {
+        return $world->update();
+    }
+
     public function render(MapRenderInterface $mapRender, World $world)
     {
-        if(!$world->update()) {
-            return;
-        }
-
-        if($world->getInputController()->getKey() == "x")
-        {
-            $world->getMemoryManager()->persist();
-
-            return;
-        }
-
         $players = $world->getPlayerCollection();
 
         foreach($players as $player)
@@ -137,5 +166,26 @@ class ApplicationCommand extends Command
         $mapRender->render($world->getMap()->getMap());
 
         $mapRender->clear($world->getMap()->getMap());
+    }
+
+    /**
+     * @param InputInterface $input
+     * @param $mapRender
+     * @param MultipleLogger $logger
+     * @return World
+     */
+    protected function createWorld(InputInterface $input, $mapRender, MultipleLogger $logger): World
+    {
+        $sizeMap = $mapRender->getSize();
+
+        $mapProvider = ($input->getOption("map")) ? new FileMapProvider($input->getOption("map")) : new RandomMapProvider($sizeMap["y"], $sizeMap["x"]);
+
+        $map = new MapBuilder($mapProvider->getMap());
+
+        $world = new World($map, array(
+            $this->addChat(5, 5),
+            $this->addChat(10, 10)
+        ), $logger);
+        return $world;
     }
 }

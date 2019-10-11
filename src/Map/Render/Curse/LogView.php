@@ -28,7 +28,7 @@ class LogView extends Window
 
         foreach ($logs as $i => $message) {
             ncurses_wmove($this->getWindow(), $i + 1, 1);
-            ncurses_waddstr($this->getWindow(), $message);
+            ncurses_waddstr($this->getWindow(), str_pad($message, 150 - strlen($message), ' '));
         }
     }
 }

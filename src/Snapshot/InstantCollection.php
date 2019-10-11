@@ -9,9 +9,9 @@
 namespace Snapshot;
 
 
-class InstantCollection implements \Iterator {
+class InstantCollection implements \Iterator, \Countable {
 
-    protected $instantCollection;
+    protected $instantCollection = [];
 
     protected $index = 0;
 
@@ -81,5 +81,8 @@ class InstantCollection implements \Iterator {
         $this->index = 0;
     }
 
-
+    public function count()
+    {
+        return count($this->instantCollection);
+    }
 }

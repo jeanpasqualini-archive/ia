@@ -20,10 +20,14 @@ class MemoryManager {
     {
         $ds = DIRECTORY_SEPARATOR;
 
-        $cacheMemory = __DIR__."/../../app/cache/".uniqid()."/";
+        $id = uniqid();
+
+        $cacheMemory = __DIR__."/../../app/cache/".$id."/";
 
         if(!file_exists($cacheMemory)) mkdir($cacheMemory);
 
-        file_put_contents($cacheMemory."memory.dump", serialize($this));
+        file_put_contents($cacheMemory."memory.dump", serialize($this->getFlashMemory()->all()));
+
+        return $id;
     }
 }

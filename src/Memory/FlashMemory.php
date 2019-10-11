@@ -34,4 +34,9 @@ class FlashMemory {
     {
         return $this->instantCollection->all();
     }
+
+    public function count()
+    {
+        return $this->instantCollection->count();
+    }
 }
