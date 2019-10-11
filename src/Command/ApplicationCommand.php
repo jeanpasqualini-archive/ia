@@ -32,6 +32,7 @@ class ApplicationCommand extends Command
     {
         $this->setName("application");
         $this->addOption("curse", null, InputOption::VALUE_NONE, "active curse");
+        $this->addOption("step-by-step", null, InputOption::VALUE_NONE, "step by step");
         $this->addOption("size", null, InputOption::VALUE_REQUIRED, "taille", exec('tput lines')."x".exec('tput cols'));
         $this->addOption("load-dump", null, InputOption::VALUE_REQUIRED, "memory load dump");
         $this->addOption("map", null, InputOption::VALUE_REQUIRED, "file");
@@ -81,7 +82,15 @@ class ApplicationCommand extends Command
                 $world = unserialize(file_get_contents($file))->getFlashMemory()->all()[0]->getData();
             }
 
-            while(1) { $this->render($mapRender, $world); }
+            while(1) {
+                if ($input->getOption('step-by-step')) {
+                    while ($world->getInputController()->getKey() != 'n') {
+                        $world->getInputController()->update();
+                        usleep(200);
+                    }
+                }
+                $this->render($mapRender, $world);
+            }
         }
         catch(\Exception $e)
         {
@@ -107,7 +116,9 @@ class ApplicationCommand extends Command
 
     public function render(MapRenderInterface $mapRender, World $world)
     {
-        $world->update();
+        if(!$world->update()) {
+            return;
+        }
 
         if($world->getInputController()->getKey() == "x")
         {
@@ -124,8 +135,6 @@ class ApplicationCommand extends Command
         }
 
         $mapRender->render($world->getMap()->getMap());
-
-        //usleep(200);
 
         $mapRender->clear($world->getMap()->getMap());
     }

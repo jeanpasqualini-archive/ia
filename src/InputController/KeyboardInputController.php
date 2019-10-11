@@ -70,6 +70,8 @@ class KeyboardInputController {
                     $this->direction = new Direction(0, 0);
                     break;
             }
+        } else {
+            $this->key = null;
         }
 
        // $this->logger->info(sprintf('KEY PRESSED %s', $key));

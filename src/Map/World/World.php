@@ -100,17 +100,18 @@ class World
         return $this->eventDispatcher;
     }
 
-    public function update()
+    public function update(): bool
     {
         $updateTime = microtime(true);
 
-        $limit = 1000 / 25 / 1000;
+        $limit = 1000 / 15 / 1000;
 
         $betweenUpdate = $updateTime - $this->lastUpdateTime;
 
         if($betweenUpdate < $limit)
         {
-            return;
+            usleep($limit - $betweenUpdate);
+            return false;
         }
 
         $this->lastUpdateTime = $updateTime;
@@ -122,6 +123,8 @@ class World
         $this->inputController->update();
 
         $this->worldIA->update($this);
+
+        return true;
 
    //     $this->memoryManager->getFlashMemory()->addInstant(new Instant($this));
     }
