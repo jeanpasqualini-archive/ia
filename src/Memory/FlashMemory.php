@@ -16,9 +16,11 @@ use Snapshot\InstantCollectionLimited;
 
 class FlashMemory {
 
-    protected $limit = 1;
+    protected $limit = 10;
 
     protected $instantCollection;
+
+    private $positionRead = -1;
 
     public function __construct()
     {
@@ -28,11 +30,39 @@ class FlashMemory {
     public function addInstant(Instant $instant)
     {
         $this->instantCollection->add($instant);
+
+        $this->positionRead++;
+
+        if ($this->positionRead > $this->limit) {
+            $this->positionRead = $this->limit;
+        }
+    }
+
+    public function getPositionRead()
+    {
+        return $this->positionRead;
+    }
+
+    public function getPlaces()
+    {
+        return $this->limit;
     }
 
     public function all()
     {
         return $this->instantCollection->all();
+    }
+
+    public function previous()
+    {
+        $this->positionRead--;
+        return $this->instantCollection->get($this->positionRead);
+    }
+
+    public function after()
+    {
+        $this->positionRead++;
+        return $this->instantCollection->get($this->positionRead);
     }
 
     public function count()

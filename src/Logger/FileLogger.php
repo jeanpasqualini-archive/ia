@@ -15,9 +15,12 @@ class FileLogger extends AbstractLogger {
 
     protected $file;
 
+    protected $path;
+
     public function __construct($path)
     {
-        $this->file = new \SplFileObject($path, "w+");
+        $this->path = $path;
+        $this->file = new \SplFileObject($this->path, "w+");
     }
 
     /**
@@ -31,5 +34,15 @@ class FileLogger extends AbstractLogger {
     public function log($level, $message, array $context = array())
     {
         $this->file->fwrite("[".date("H:i:s")."] [$level] : ".$message.PHP_EOL);
+    }
+
+    public function __sleep()
+    {
+        return ['path'];
+    }
+
+    public function __wakeup()
+    {
+        $this->file = new \SplFileObject($this->path, "w+");
     }
 }

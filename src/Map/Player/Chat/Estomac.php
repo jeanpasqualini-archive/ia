@@ -70,12 +70,4 @@ class Estomac
     {
         return $this->eventDispatcher;
     }
-
-    public function __sleep()
-    {
-        return array(
-            "nouriture",
-            "player"
-        );
-    }
 }

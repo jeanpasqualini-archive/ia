@@ -22,7 +22,9 @@ class InstantCollectionLimited extends InstantCollection {
 
     public function add(Instant $instant)
     {
-        if(count($this->instantCollection) >= $this->limit) return;
+        if(count($this->instantCollection) >= $this->limit) {
+            $this->instantCollection = array_slice($this->instantCollection, 1, 10);
+        }
 
         parent::add($instant);
     }

@@ -28,8 +28,6 @@ class World
 
     protected $timer;
 
-    protected $memoryManager;
-
     protected $inputController;
 
     protected $logger;
@@ -60,12 +58,9 @@ class World
 
         $this->timer = new Timer();
 
-        $this->memoryManager = new MemoryManager();
-
         $this->inputController = new KeyboardInputController($logger);
 
-        $this->logger = !empty($logger) ? $logger : new MultipleLogger();
-        $this->logger->addLogger(new FileLogger($this->getLogPath()."dev.log"));
+        $this->logger = $logger;
 
         $this->eventDispatcher = new EventDispatcher();
     }
@@ -78,11 +73,6 @@ class World
     public function getLogPath()
     {
         return __DIR__."/../../../app/logs/";
-    }
-
-    public function getMemoryManager()
-    {
-        return $this->memoryManager;
     }
 
     public function getInputController()
@@ -144,13 +134,13 @@ class World
         return $this->players;
     }
 
-    public function __sleep()
+    public function __wakeup()
     {
-        return array(
-            "players",
-            "map",
-            "worldIA",
-            "timer"
-        );
+        $this->logger = new MultipleLogger();
+    }
+
+    public function setLogger($logger)
+    {
+        $this->logger = $logger;
     }
 }

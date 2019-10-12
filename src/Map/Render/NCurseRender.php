@@ -17,8 +17,11 @@ use Map\Builder\MapBuilder;
 use Map\Render\Curse\LogView;
 use Map\Render\Curse\Map;
 use Map\Render\Curse\Statictic;
+use Map\Render\Curse\TimeMachineView;
 use Map\Render\Curse\Timer;
 use CurseFramework\Listbox;
+use Map\World\WorldContainer;
+use Memory\MemoryManager;
 use Psr\Log\LoggerInterface;
 
 class NCurseRender extends Ncurses implements MapRenderInterface {
@@ -39,6 +42,8 @@ class NCurseRender extends Ncurses implements MapRenderInterface {
 
     protected $loggerView;
 
+    protected $timeMachineView;
+
     protected $logger;
 
     protected static $instance;
@@ -53,7 +58,7 @@ class NCurseRender extends Ncurses implements MapRenderInterface {
         return self::$instance;
     }
 
-    public function __construct($line, $colonne, LoggerInterface $logger)
+    public function __construct($line, $colonne, LoggerInterface $logger, WorldContainer $worldContainer, MemoryManager $memoryManager)
     {
         parent::__construct();
 
@@ -90,6 +95,10 @@ class NCurseRender extends Ncurses implements MapRenderInterface {
         $this->map = new Map($y/2, $x/2, 5, ($x/2/2));
         $this->map->border();
 
+        $this->timeMachineView = new TimeMachineView(3, 15, $y - 15, ($x / 2) - 5);
+        $this->timeMachineView->setMemoryManager($memoryManager);
+        $this->timeMachineView->border();
+
         $this->cursor = new Cursor(0, 0, false);
         ncurses_keypad($this->window->getWindow(), true);
     }
@@ -123,6 +132,10 @@ class NCurseRender extends Ncurses implements MapRenderInterface {
         $this->loggerView->setChanged(true);
         $this->loggerView->draw();
         $this->loggerView->refresh();
+
+        $this->timeMachineView->setChanged(true);
+        $this->timeMachineView->draw();
+        $this->timeMachineView->refresh();
 
         //$this->listbox->setChanged(false);
         $this->listbox->drawList();

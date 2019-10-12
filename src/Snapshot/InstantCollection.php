@@ -36,6 +36,11 @@ class InstantCollection implements \Iterator, \Countable {
         return $this->instantCollection[$this->index];
     }
 
+    public function get($index)
+    {
+        return $this->instantCollection[$index] ?? null;
+    }
+
     /**
      * (PHP 5 &gt;= 5.0.0)<br/>
      * Move forward to next element

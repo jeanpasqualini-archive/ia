@@ -22,9 +22,4 @@ class Instant {
     {
         return unserialize($this->data);
     }
-
-    public function __sleep()
-    {
-        return ['data'];
-    }
 }

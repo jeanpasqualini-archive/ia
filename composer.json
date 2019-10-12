@@ -2,12 +2,13 @@
     "name": "jean-pasqualini/ia",
     "description": "ia php testing",
     "require": {
-        "symfony/console": "2.8.*",
+        "symfony/console": "2.*",
         "psr/log": "^1.0",
-        "symfony/event-dispatcher": "^3.0"
+        "symfony/event-dispatcher": "^3.0",
+        "symfony/var-dumper": "2.*"
     },
     "license": "MIT",
-    "autoload" : 
+    "autoload" :
     {
       "psr-0":
       {
