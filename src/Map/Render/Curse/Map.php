@@ -57,7 +57,7 @@ class Map extends Window {
     {
         $mapping = array(
             MapBuilder::HERBE => '░',
-            MapBuilder::FLEUR => 'φ',
+            MapBuilder::FLEUR => 'K',
             MapBuilder::ARBRE => '|',
             MapBuilder::EAU => '-',
             "P" => '■',

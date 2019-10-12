@@ -14,6 +14,7 @@ use CurseFramework\Ncurses;
 use CurseFramework\Window;
 use Logger\BufferLogger;
 use Map\Builder\MapBuilder;
+use Map\Render\Curse\DebugView;
 use Map\Render\Curse\LogView;
 use Map\Render\Curse\Map;
 use Map\Render\Curse\Statictic;
@@ -99,6 +100,11 @@ class NCurseRender extends Ncurses implements MapRenderInterface {
         $this->timeMachineView->setMemoryManager($memoryManager);
         $this->timeMachineView->border();
 
+
+        $this->debug = new DebugView($this->window, 20, 28, 5, $x - 30);
+        $this->debug->border();
+        $this->debug->setWorldContainer($worldContainer);
+
         $this->cursor = new Cursor(0, 0, false);
         ncurses_keypad($this->window->getWindow(), true);
     }
@@ -120,6 +126,10 @@ class NCurseRender extends Ncurses implements MapRenderInterface {
         $this->statistic->update();
         $this->statistic->drawList();
         $this->statistic->refresh();
+
+        $this->debug->update();
+        $this->debug->drawList();
+        $this->debug->refresh();
 
         $this->map->setChanged(true);
         $this->map->draw($map);

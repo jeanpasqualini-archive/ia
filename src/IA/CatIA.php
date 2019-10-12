@@ -41,6 +41,11 @@ class CatIA implements IAInterface
         $this->objectifs = array();
     }
 
+    public function getObjectifs()
+    {
+        return $this->objectifs;
+    }
+
     public function update(World $world)
     {
         $this->chat->move();

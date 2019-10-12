@@ -9,13 +9,14 @@
 namespace Map\Player;
 
 use IA\IAInterface;
+use Map\Location\Point;
 use Map\World\World;
 
 interface PlayerInterface
 {
     public function move();
 
-    public function getPosition();
+    public function getPosition(): Point;
 
     /**
      * @return IAInterface

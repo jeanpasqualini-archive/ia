@@ -30,7 +30,7 @@ abstract class Player implements PlayerInterface
     /**
      * @return Point
      */
-    public function getPosition()
+    public function getPosition(): Point
     {
         return $this->position;
     }
