@@ -33,6 +33,7 @@ class NCurseRender extends Ncurses implements MapRenderInterface {
 
     protected $cursor;
 
+    /** @var Map */
     protected $map;
 
     protected $listbox;
@@ -45,9 +46,21 @@ class NCurseRender extends Ncurses implements MapRenderInterface {
 
     protected $timeMachineView;
 
+    /** @var LoggerInterface */
     protected $logger;
 
     protected static $instance;
+    /**
+     * @var WorldContainer
+     */
+    private $worldContainer;
+    /**
+     * @var MemoryManager
+     */
+    private $memoryManager;
+
+    /** @var bool */
+    private $initialized = false;
 
     public function getWindow()
     {
@@ -59,16 +72,19 @@ class NCurseRender extends Ncurses implements MapRenderInterface {
         return self::$instance;
     }
 
-    public function __construct($line, $colonne, LoggerInterface $logger, WorldContainer $worldContainer, MemoryManager $memoryManager)
+    public function init()
     {
-        parent::__construct();
-
-        self::$instance = $this;
+        if ($this->initialized) {
+            return;
+        }
 
         if(!extension_loaded("ncurses"))
         {
             throw new \Exception("curse not supported");
         }
+
+        ncurses_init();
+        $this->initialized = true;
 
         $this->window = new Window();
         $this->window->border();
@@ -88,7 +104,7 @@ class NCurseRender extends Ncurses implements MapRenderInterface {
         $this->statistic->border();
 
         $bufferLogger = new BufferLogger();
-        $logger->addLogger($bufferLogger);
+        $this->logger->addLogger($bufferLogger);
         $this->loggerView = new LogView(10, $x - 2, $y - 12, 1);
         $this->loggerView->border();
         $this->loggerView->setBufferLog($bufferLogger);
@@ -97,20 +113,30 @@ class NCurseRender extends Ncurses implements MapRenderInterface {
         $this->map->border();
 
         $this->timeMachineView = new TimeMachineView(3, 15, $y - 15, ($x / 2) - 5);
-        $this->timeMachineView->setMemoryManager($memoryManager);
+        $this->timeMachineView->setMemoryManager($this->memoryManager);
         $this->timeMachineView->border();
 
 
         $this->debug = new DebugView($this->window, 20, 28, 5, $x - 30);
         $this->debug->border();
-        $this->debug->setWorldContainer($worldContainer);
+        $this->debug->setWorldContainer($this->worldContainer);
 
         $this->cursor = new Cursor(0, 0, false);
         ncurses_keypad($this->window->getWindow(), true);
     }
 
-    public function getSize()
+    public function __construct($line, $colonne, LoggerInterface $logger, WorldContainer $worldContainer, MemoryManager $memoryManager)
     {
+        $this->logger = $logger;
+        $this->worldContainer = $worldContainer;
+        $this->memoryManager = $memoryManager;
+
+        self::$instance = $this;
+    }
+
+    public function getSize(): array
+    {
+        $this->init();
         $this->window->getMaxYX($y, $x);
         return array(
             "x" => $x/2,
@@ -154,6 +180,11 @@ class NCurseRender extends Ncurses implements MapRenderInterface {
     }
     public function clear($map)
     {
+    }
+
+    public function close()
+    {
+        ncurses_end();
     }
 
 

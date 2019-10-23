@@ -12,4 +12,8 @@ namespace Map\Render;
 use Psr\Log\LoggerInterface;
 
 interface MapRenderInterface {
+    public function init();
+    public function getSize(): array;
+    public function render($map);
+    public function clear($map);
 }

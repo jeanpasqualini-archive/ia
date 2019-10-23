@@ -49,9 +49,7 @@ class ApplicationCommand extends Command
         }
         catch(\Throwable $e)
         {
-            if(extension_loaded("ncurses")) {
-                ncurses_end();
-            }
+            unset($runner);
             $symfonyStyle = new SymfonyStyle($input, $output);
             $symfonyStyle->error($e->getMessage());
             $symfonyStyle->comment($e->getTraceAsString());

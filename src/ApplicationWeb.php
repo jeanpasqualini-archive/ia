@@ -46,7 +46,7 @@ try {
         $world->getMap()->setItem($player->getPosition(), "P");
     }
 
-    $mapRender->render($world->getMap()->getMap());
+    $mapRender->render($world->getMap()->getFinalMap());
 
 }
 catch(Exception $e)

@@ -50,10 +50,15 @@ class Manger {
 
         if($this->path === null)
         {
-            $newPoint = $world->getMap()->findItem(MapBuilder::FLEUR);
+            $founds = $world->getMap()->findItems(
+                $this->player->getPosition(),
+                MapBuilder::FLEUR
+            );
 
-            if($newPoint !== null)
+            if(!empty($founds))
             {
+                $newPoint = $founds[0]['point'];
+
                 $world->getLogger()->log(LogLevel::INFO, "le chat part vers le point ".$newPoint->getX().", ".$newPoint->getY());
 
                 $this->path = new PathPoint($this->player, $newPoint);
@@ -62,7 +67,14 @@ class Manger {
 
         if($this->path !== null)
         {
-            $world->getLogger()->log(LogLevel::INFO, "le chat est à la recherche de nourriture");
+            $world->getLogger()->log(
+                LogLevel::INFO,
+                sprintf(
+                    'le chat recherche la nourriture (target => %s , %s )',
+                        $this->path->getDestination()->getX(),
+                        $this->path->getDestination()->getY()
+                )
+            );
 
             $this->path->update($world);
         }

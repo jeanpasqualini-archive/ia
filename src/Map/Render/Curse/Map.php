@@ -31,6 +31,8 @@ class Map extends Window {
             ncurses_init_pair($mappingColor["P"], NCURSES_COLOR_WHITE, NCURSES_COLOR_BLACK);
 
             ncurses_init_pair($mappingColor[MapBuilder::FLEUR], NCURSES_COLOR_RED, NCURSES_COLOR_GREEN);
+
+            ncurses_init_pair(6, NCURSES_COLOR_RED, NCURSES_COLOR_BLACK);
         }
     }
 
@@ -73,7 +75,7 @@ class Map extends Window {
             MapBuilder::ARBRE => 2,
             MapBuilder::EAU => 3,
             "P" => 4,
-            MapBuilder::FLEUR => 6
+            MapBuilder::FLEUR => 5
         );
     }
 

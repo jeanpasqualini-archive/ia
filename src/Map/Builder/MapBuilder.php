@@ -11,7 +11,9 @@ use Map\Location\Point;
  */
 class MapBuilder
 {
-    protected $map;
+    protected $layers;
+
+    private $finalLayer = [];
 
     const HERBE = "X";
     const ARBRE = "Y";
@@ -25,9 +27,14 @@ class MapBuilder
         self::FLEUR
     );
 
+    private $positionLayers = [
+        'map' => 1,
+        'player' => 2,
+    ];
+
     public function __construct($map)
     {
-        $this->map = $this->transformRawMap($map);
+        $this->layers['map'] = $this->transformRawMap($map);
     }
 
     public static function getAllowedItems()
@@ -35,36 +42,50 @@ class MapBuilder
         return self::$allowedItems;
     }
 
-    public function findItem($item)
+    public function findItems(Point $point, $item, $layer = 'map')
     {
-        foreach($this->map as $y => $line)
+        $found = [];
+
+        foreach($this->layers[$layer] as $y => $line)
         {
             foreach($line as $x => $colonne)
             {
-                if($this->map[$y][$x] == $item)
+                if($this->layers[$layer][$y][$x] == $item)
                 {
-                    return new Point($x, $y);
+                    $found[] = [
+                        'distance' => abs($point->getX() - $x) + abs($point->getY() - $y),
+                        'point' => new Point($x, $y),
+                    ];
                 }
             }
         }
 
-        return null;
+        uasort($found, function($a, $b) {
+           if ($a['distance'] == $b['distance'])
+           {
+               return 0;
+           }
+
+           return ($a['distance'] < $b['distance']) ? -1 : 1;
+        });
+
+        return $found;
     }
 
-    public function getItem(Point $position)
+    public function getItem(Point $position, $layer = 'map')
     {
-        return $this->map[$position->getY()][$position->getX()];
+        return $this->layers[$layer][$position->getY()][$position->getX()];
     }
 
     public function crop($x, $y)
     {
-        $this->map = array_slice($this->map, 0, $y);
+        $this->layers = array_slice($this->layers, 0, $y);
 
-        foreach($this->map as $line)
+        foreach($this->layers as $line)
         {
             foreach($line as $colonne)
             {
-                $this->map[$y] = array_slice($this->map[$y], 0, $x);
+                $this->layers[$y] = array_slice($this->layers[$y], 0, $x);
             }
         }
     }
@@ -81,13 +102,34 @@ class MapBuilder
         return $mapArray;
     }
 
-    public function setItem(Point $position, $item)
+    public function setItem(Point $position, $item, $layer = 'map')
     {
-        $this->map[$position->getY()][$position->getX()] = $item;
+        $this->layers[$layer][$position->getY()][$position->getX()] = $item;
+
+        //$maximumVisible = max($this->positionLayers);
     }
 
-    public function getMap()
+    public function clearLayer($layer)
     {
-        return $this->map;
+        $this->layers[$layer] = [];
+    }
+
+    public function updateFinalLayer()
+    {
+        foreach ($this->layers as $layer)
+        {
+            foreach($layer as $y => $line)
+            {
+                foreach($line as $x => $colonne)
+                {
+                    $this->finalLayer[$y][$x] = $layer[$y][$x];
+                }
+            }
+        }
+    }
+
+    public function getFinalMap()
+    {
+        return $this->finalLayer;
     }
 }

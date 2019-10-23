@@ -58,6 +58,8 @@ class GameRunner
             $world = $this->createWorld($mapRender, $logger);
             $worldContainer->setWorld($world);
 
+            $mapRender->init();
+
             $this->render($mapRender, $world);
 
             while(1) {
@@ -193,7 +195,7 @@ class GameRunner
     }
 
 
-    protected function addChat($x, $y)
+    protected function addChat($x, $y, $speed = 1)
     {
         $chat = new Chat();
         // $chat->getPosition()->setDirection(new Direction(1, 0));
@@ -201,6 +203,8 @@ class GameRunner
         $chat->getPosition()->setX($x);
 
         $chat->getPosition()->setY($y);
+
+       // $chat->getPosition()->setSpeed($speed);
 
         return $chat;
     }
@@ -219,12 +223,14 @@ class GameRunner
 
         foreach($players as $player)
         {
-            $world->getMap()->setItem($player->getPosition(), "P");
+            $world->getMap()->clearLayer('player');
+            $world->getMap()->setItem($player->getPosition(), "P", 'player');
         }
 
-        $mapRender->render($world->getMap()->getMap());
+        $world->getMap()->updateFinalLayer();
+        $mapRender->render($world->getMap()->getFinalMap());
 
-        $mapRender->clear($world->getMap()->getMap());
+        $mapRender->clear($world->getMap()->getFinalMap());
     }
 
     /**
@@ -233,7 +239,7 @@ class GameRunner
      * @param MultipleLogger $logger
      * @return World
      */
-    protected function createWorld($mapRender, MultipleLogger $logger): World
+    protected function createWorld(MapRenderInterface $mapRender, MultipleLogger $logger): World
     {
         $sizeMap = $mapRender->getSize();
 
@@ -242,10 +248,17 @@ class GameRunner
         $map = new MapBuilder($mapProvider->getMap());
 
         $world = new World($map, array(
-            $this->addChat(5, 5),
-            $this->addChat(10, 10)
+            $this->addChat(5, 2, 1),
+            $this->addChat(10, 4, 2)
         ), $logger);
 
         return $world;
+    }
+
+    public function __destruct()
+    {
+        if(extension_loaded("ncurses")) {
+            ncurses_end();
+        }
     }
 }
