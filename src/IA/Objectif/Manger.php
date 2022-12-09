@@ -38,7 +38,7 @@ class Manger {
 
             if($item == MapBuilder::FLEUR)
             {
-                $world->getLogger()->log(LogLevel::INFO, "le chat mange");
+                $world->getLogger()->log(LogLevel::INFO, "le chat mange \x07");
 
                 $this->player->getEstomac()->setNouriture($this->player->getEstomac()->getNouriture() + 10);
 
@@ -52,14 +52,17 @@ class Manger {
         {
             $founds = $world->getMap()->findItems(
                 $this->player->getPosition(),
-                MapBuilder::FLEUR
+                MapBuilder::FLEUR,
+                'map'
             );
 
             if(!empty($founds))
             {
                 $newPoint = $founds[0]['point'];
 
-                $world->getLogger()->log(LogLevel::INFO, "le chat part vers le point ".$newPoint->getX().", ".$newPoint->getY());
+                $world->getLogger()->log(LogLevel::INFO, "[flower] le chat part vers le point ".((string) $newPoint), [
+                    "pid" => $this->player->getIdentifiant(),
+                ]);
 
                 $this->path = new PathPoint($this->player, $newPoint);
             }

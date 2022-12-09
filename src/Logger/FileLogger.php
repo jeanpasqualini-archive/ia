@@ -33,7 +33,7 @@ class FileLogger extends AbstractLogger {
      */
     public function log($level, $message, array $context = array())
     {
-        $this->file->fwrite("[".date("H:i:s")."] [$level] : ".$message.PHP_EOL);
+        $this->file->fwrite("[".date("H:i:s")."] [$level] : ".$message. " (".json_encode($context).")".PHP_EOL);
     }
 
     public function __sleep()

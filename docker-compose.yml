@@ -1,6 +1,9 @@
-app:
+version: "3.2"
+services:
+  app:
     build: ./
     volumes:
-        - "$PWD:/app"
-        - "./ncurses.ini:/etc/php5/cli/conf.d/ncurses.ini"
+      - "$PWD:/app"
+      - "./ncurses.ini:/etc/php5/cli/conf.d/ncurses.ini"
+      - "./app/log/:/tmp/log/"
     working_dir: /app

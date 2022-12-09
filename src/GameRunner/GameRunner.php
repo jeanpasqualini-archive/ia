@@ -9,6 +9,7 @@
 
 namespace GameRunner;
 
+use Logger\FileLogger;
 use Logger\MultipleLogger;
 use Map\Builder\MapBuilder;
 use Map\Provider\RandomMapProvider;
@@ -49,7 +50,7 @@ class GameRunner
             list($line, $colonne) = explode("x", $this->size);
 
             $logger = new MultipleLogger();
-            //$this->logger->addLogger(new FileLogger($this->getLogPath()."dev.log"));
+            $logger->addLogger(new FileLogger("/tmp/log/dev.log"));
             $worldContainer = new WorldContainer();
             $memoryManager = new MemoryManager();
             $mapRender = new NCurseRender($line, $colonne, $logger, $worldContainer, $memoryManager);
@@ -221,9 +222,10 @@ class GameRunner
     {
         $players = $world->getPlayerCollection();
 
+        $world->getMap()->clearLayer('player');
+
         foreach($players as $player)
         {
-            $world->getMap()->clearLayer('player');
             $world->getMap()->setItem($player->getPosition(), "P", 'player');
         }
 
@@ -245,11 +247,11 @@ class GameRunner
 
         $mapProvider = new RandomMapProvider($sizeMap["y"], $sizeMap["x"]);
 
-        $map = new MapBuilder($mapProvider->getMap());
+        $map = new MapBuilder($mapProvider->getMap(), $logger);
 
         $world = new World($map, array(
-            $this->addChat(5, 2, 1),
-            $this->addChat(10, 4, 2)
+            $this->addChat(5, 5, 1),
+            $this->addChat(60, 15, 2)
         ), $logger);
 
         return $world;

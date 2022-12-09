@@ -13,6 +13,7 @@ use CurseFramework\Listbox;
 use IA\ApplicationIA;
 use IA\CatIA;
 use IA\Objectif\Manger;
+use Map\Player\Player;
 use Map\Player\PlayerHasEstomac;
 use Map\Player\PlayerInterface;
 use Map\World\World;
@@ -43,14 +44,14 @@ class DebugView extends Listbox {
         ];
 
         /**
-         * @var $players PlayerHasEstomac[]
+         * @var $players PlayerHasEstomac[]|Player[]
          */
         foreach ($players as $id => $player) {
             $items[] = [
                 'title' => sprintf(
-                    '%s (%d)',
+                    '%s (%s)',
                     $this->getShortName(get_class($player)),
-                    $id
+                    $player->getIdentifiant()
                 ),
                 'bold' => false
             ];

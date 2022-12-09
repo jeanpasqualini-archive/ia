@@ -76,4 +76,9 @@ class Point
     {
         $this->direction = $direction;
     }
+
+    public function __toString()
+    {
+        return $this->y.";".$this->x;
+    }
 }

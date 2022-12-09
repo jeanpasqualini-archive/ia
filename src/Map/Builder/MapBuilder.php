@@ -1,7 +1,9 @@
 <?php
 
 namespace Map\Builder;
+use Logger\MultipleLogger;
 use Map\Location\Point;
+use Map\Player\Player;
 
 /**
  * Created by PhpStorm.
@@ -27,14 +29,19 @@ class MapBuilder
         self::FLEUR
     );
 
+    /** @var int[] */
     private $positionLayers = [
         'map' => 1,
         'player' => 2,
     ];
 
-    public function __construct($map)
+    /** @var MultipleLogger */
+    private $logger;
+
+    public function __construct(array $map, MultipleLogger $logger)
     {
         $this->layers['map'] = $this->transformRawMap($map);
+        $this->logger = $logger;
     }
 
     public static function getAllowedItems()
@@ -60,7 +67,7 @@ class MapBuilder
             }
         }
 
-        uasort($found, function($a, $b) {
+        usort($found, function($a, $b) {
            if ($a['distance'] == $b['distance'])
            {
                return 0;

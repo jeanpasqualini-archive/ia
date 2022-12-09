@@ -30,6 +30,8 @@ class Chat extends Player implements PlayerHasEstomac
         $this->eventDispatcher = new EventDispatcher();
 
         $this->ia = new CatIA($this);
+
+        parent::__construct();
     }
 
     public function getEstomac()

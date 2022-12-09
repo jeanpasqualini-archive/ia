@@ -93,11 +93,19 @@ class NCurseRender extends Ncurses implements MapRenderInterface {
         $this->timer = new Timer(3, 10, 5, 1);
         $this->timer->border();
 
-        $this->listbox = new Listbox($this->window, 5, 20, 10, 1);
+        $this->listbox = new Listbox($this->window, 12, 25, 8, 1);
         $this->listbox->border();
         $this->listbox->setItems(array(
-            array("title" => "Quitter", "bold" => false),
-            array("title" => "Regenerer map", "bold" => false),
+            array("title" => "Aide ?", "bold" => false),
+            array("title" => "q: Quitter", "bold" => false),
+            array("title" => "x: Persister memoire", "bold" => false),
+            array("title" => "r: Nouvelle map", "bold" => false),
+            array("title" => "t: Mode timemachine", "bold" => false),
+            array("title" => "s: Mode lent", "bold" => false),
+            array("title" => "b: Mode pas a pas", "bold" => false),
+            array("title" => "p: Previous snapshot", "bold" => false),
+            array("title" => "a: Next snapshot", "bold" => false),
+            array("title" => "n: Prochaine iteration", "bold" => false),
         ));
 
         $this->statistic = new Statictic($this->window, 5, 20, 20, 1);

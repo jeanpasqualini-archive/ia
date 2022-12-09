@@ -18,6 +18,7 @@ class Statictic extends Listbox {
     public function update()
     {
         $this->setItems(array(
+            array("title" => "Profiling", "bold" => false),
             array("title" => "memory : ".$this->convert(memory_get_usage()), "bold" => false),
             array("title" => "timer : ".World::getInstance()->getTimer()->getTick(), "bold" => false),
         ));

@@ -12,6 +12,12 @@ use Map\Location\Point;
  */
 abstract class Player implements PlayerInterface
 {
+    private static $generatorId = 0;
+
+    const FOODS = ["burger", "salad", "tomato", "oignon"];
+
+    private $identifiant;
+
     protected $position;
 
     protected $life = 10;
@@ -21,6 +27,17 @@ abstract class Player implements PlayerInterface
     protected $puissance = 1;
 
     protected $eventDispatcher;
+
+    public function __construct()
+    {
+        $this->identifiant = self::FOODS[self::$generatorId];
+        self::$generatorId++;
+    }
+
+    public function getIdentifiant(): string
+    {
+        return $this->identifiant;
+    }
 
     public function getEventDispatcher()
     {

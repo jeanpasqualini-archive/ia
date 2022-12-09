@@ -78,7 +78,7 @@ class PathPoint {
         $positionPlayer->setDirection(new Direction($direction["X"], $direction["Y"]));
         $positionPlayer->move();
 
-        $world->getLogger()->log(LogLevel::INFO, "le joeur ".get_class($this->player). " est en X : ".$positionPlayer->getX()." Y : ".$positionPlayer->getY()." et il se déplace en X : ".$direction["X"]." Y : ".$direction["Y"]);
+        $world->getLogger()->log(LogLevel::INFO, "le joueur ".get_class($this->player). " est en X : ".$positionPlayer->getX()." Y : ".$positionPlayer->getY()." et il se déplace en X : ".$direction["X"]." Y : ".$direction["Y"]);
     }
 
     public function isEnd()
