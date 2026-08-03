@@ -20,6 +20,7 @@ class ApplicationCommand extends Command
     {
         $this
             ->addOption('play', null, InputOption::VALUE_NONE, 'demarre en lecture au lieu de demarrer en pause')
+            ->addOption('speed', null, InputOption::VALUE_REQUIRED, 'vitesse de depart (0.25 a 1000)')
             ->addOption('map', null, InputOption::VALUE_REQUIRED, 'charge une map depuis un fichier')
             ->addOption('seed', null, InputOption::VALUE_REQUIRED, 'graine du terrain, pour rejouer la meme carte')
             ->addOption('flash-name', null, InputOption::VALUE_REQUIRED, 'nom du dump memoire', 'game')

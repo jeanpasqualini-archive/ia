@@ -17,16 +17,11 @@ use Timer;
 
 class World
 {
-    /** Target simulation rate, in updates per second. */
-    private const UPDATES_PER_SECOND = 15;
-
     private ApplicationIA $worldIA;
 
     private Timer $timer;
 
     private EventDispatcher $eventDispatcher;
-
-    private float $lastUpdateTime = 0.0;
 
     /**
      * @param list<PlayerInterface> $players
@@ -70,33 +65,18 @@ class World
     /**
      * Advance the simulation by one tick.
      *
-     * Returns false when the call was too early and nothing changed, so the
-     * caller can skip the render.
+     * Pacing belongs to the game loop, not here: the world used to sleep on
+     * its own to hold 15 ticks per second, which capped every speed above x1
+     * and had a domain object calling usleep().
      */
-    public function update(): bool
+    public function update(): void
     {
-        $now = microtime(true);
-        $minimumInterval = 1 / self::UPDATES_PER_SECOND;
-        $elapsed = $now - $this->lastUpdateTime;
-
-        if ($elapsed < $minimumInterval) {
-            // usleep() takes microseconds: the original code passed seconds
-            // here, which rounded down to 0 and burned a full core.
-            usleep((int) (($minimumInterval - $elapsed) * 1_000_000));
-
-            return false;
-        }
-
-        $this->lastUpdateTime = $now;
-
         $this->logger->log(LogLevel::INFO, 'Update world');
 
         // Input is drained by the game loop, not here: both draining the same
         // event stream would make each of them miss half the key presses.
         $this->timer->update();
         $this->worldIA->update($this);
-
-        return true;
     }
 
     public function getTimer(): Timer
@@ -126,7 +106,7 @@ class World
      */
     public function __sleep(): array
     {
-        return ['map', 'players', 'worldIA', 'timer', 'lastUpdateTime'];
+        return ['map', 'players', 'worldIA', 'timer'];
     }
 
     public function __wakeup(): void

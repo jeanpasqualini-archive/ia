@@ -54,11 +54,21 @@ Entry: `console` → `ApplicationConsole` (single-command Symfony app) → `Comm
 
 `Runtime\TimeControl` is the single source of truth for paused/speed/time-machine, shared by the loop and the control bar so neither has to reach into the other. `advance()` computes nothing while the time machine is on — the world on screen is a restored snapshot.
 
+### Speed
+
+The ladder runs x0.25 to x1000. Below the render rate, speed is the sleep between frames; above it there is no sleep left to shave, so **speed becomes ticks per frame** (`ticksPerFrame()`), rendering stays at 15fps and the simulation batches. `World::update()` no longer paces itself — a domain object calling `usleep()` capped everything above x1.
+
+Three things scale with the batch rather than the tick: the logger is muted for all but the last tick of a batch (thousands of lines per frame would cost more than the simulation), snapshots are taken per *frame* (`SNAPSHOT_EVERY_FRAMES`), and `advance()` sleeps only the remainder of the frame budget — sleeping a full delay after a late frame is how a loop that is merely behind becomes hopelessly behind.
+
+Asking for x1000 does not make the machine deliver it, so `observe()` records the rate actually reached and the control bar turns red with the real multiplier. Measured here: ~20k ticks/s in isolation (x1300), ~x360 through the full render loop. `--speed N` starts at a given rung, which is also how that gets measured.
+
 **World is the simulated state.** Map, players, timer, and the per-player AI. Services are injected and explicitly excluded from `__sleep`. Input is drained by the loop, never by `World` — both draining the same event stream would make each miss half the key presses.
 
 **AI is per-player and event-driven.** `ApplicationIA` walks every player, calls its AI, then its `update()`, then enforces where it may stand — clamped to the map and reverted if it landed on an impassable tile. That is the single authority on position, whatever moved the player. `Estomac` emits `HungryEvent`/`FullEvent` each tick; `CatIA` turns hungry into a `Manger` goal and drops all goals when full. **Goals own movement while active**; the free-roam `move()` (keyboard direction) only runs when there is no goal. Add a behaviour by writing an `ObjectifInterface` under `src/IA/Objectif/` and subscribing it to an event in the AI class.
 
 ### Pathfinding
+
+`PathFinder` works on integers over a flat cost grid (`MapBuilder::costGrid()`), never on `Point` objects: the first version allocated about two dozen of them per expanded tile, and a search that found nothing — having to visit the whole map — took 50ms, capping the simulation at x40 as soon as food ran out. `Manger` also waits `RETRY_EVERY` ticks before searching again after a failure, since eating only ever removes flowers and the answer can hardly turn positive on its own.
 
 `MapBuilder::cost()` gives each tile a walking cost — grass and flowers 1, undergrowth 3, water impassable (`null`). Read it with `array_key_exists`, never `??`: an impassable tile has a *null* cost, which `??` would silently replace with the default.
 

@@ -108,6 +108,51 @@ class MapBuilder
     }
 
     /**
+     * Every tile cost in one pass, indexed [y][x], null meaning impassable.
+     *
+     * The pathfinder needs the whole grid, and asking for it tile by tile
+     * through Point objects turned out to dominate its runtime.
+     *
+     * @return list<list<int|null>>
+     */
+    public function costGrid(): array
+    {
+        $grid = [];
+
+        foreach ($this->layers[self::LAYER_MAP] as $line) {
+            $row = [];
+
+            foreach ($line as $tile) {
+                $row[] = array_key_exists($tile, self::COSTS) ? self::COSTS[$tile] : 1;
+            }
+
+            $grid[] = $row;
+        }
+
+        return $grid;
+    }
+
+    /**
+     * Tiles holding $item, as flat [y, x] pairs.
+     *
+     * @return list<array{int, int}>
+     */
+    public function positionsOf(string $item): array
+    {
+        $found = [];
+
+        foreach ($this->layers[self::LAYER_MAP] as $y => $line) {
+            foreach ($line as $x => $tile) {
+                if ($tile === $item) {
+                    $found[] = [$y, $x];
+                }
+            }
+        }
+
+        return $found;
+    }
+
+    /**
      * Closest walkable tile around $point, searched outwards. Used to place
      * players, so nobody spawns in the middle of a lake.
      */

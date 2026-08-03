@@ -358,7 +358,9 @@ class TuiRender implements MapRenderInterface
             $this->button(' - ', !$this->timeControl->isSlowest()),
             Span::styled(
                 ' ' . $this->timeControl->speedLabel() . ' ',
-                Style::default()->fg(AnsiColor::LightGreen)
+                Style::default()->fg(
+                    $this->timeControl->isLagging() ? AnsiColor::LightRed : AnsiColor::LightGreen
+                )
             ),
             $this->button(' + ', !$this->timeControl->isFastest()),
             Span::fromString('  '),
@@ -375,6 +377,15 @@ class TuiRender implements MapRenderInterface
             $spans[] = $this->button(' > a ', true);
         }
 
+        // Asking for x1000 does not make the machine deliver it, so the rate
+        // actually reached is shown as soon as it falls behind.
+        if ($this->timeControl->isLagging()) {
+            $spans[] = Span::styled(
+                sprintf(' reel x%s ', $this->format($this->timeControl->observedMultiplier() ?? 0.0)),
+                Style::default()->fg(AnsiColor::LightRed)
+            );
+        }
+
         $spans[] = Span::fromString('  ');
         $spans[] = Span::styled(
             sprintf('tick %d', $tick),
@@ -385,6 +396,13 @@ class TuiRender implements MapRenderInterface
             'Temps  (tab: IA suivante, r: nouvelle map, x: sauver, q: quitter)',
             ParagraphWidget::fromLines(Line::fromSpans(...$spans))
         );
+    }
+
+    private function format(float $multiplier): string
+    {
+        return $multiplier >= 10
+            ? (string) (int) round($multiplier)
+            : rtrim(rtrim(number_format($multiplier, 1), '0'), '.');
     }
 
     private function button(string $label, bool $active): Span

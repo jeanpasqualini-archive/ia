@@ -17,6 +17,12 @@ use SplPriorityQueue;
  * flower, and it answers "the nearest one I can actually reach" rather than
  * "the nearest one as the crow flies" — which, now that lakes block movement,
  * are frequently not the same tile.
+ *
+ * The whole search runs on integers over a flat cost grid. The first version
+ * created Point objects for every neighbour it looked at — about two dozen per
+ * expanded tile — and a search that found nothing, having to visit the entire
+ * map, took 50ms. That capped the simulation at roughly forty ticks per second
+ * as soon as the food ran out.
  */
 class PathFinder
 {
@@ -33,8 +39,18 @@ class PathFinder
     private const STRAIGHT = 10;
     private const DIAGONAL = 14;
 
+    /** @var list<list<int|null>> */
+    private array $costs;
+
+    private int $width;
+
+    private int $height;
+
     public function __construct(private MapBuilder $map)
     {
+        $this->costs = $map->costGrid();
+        $this->height = count($this->costs);
+        $this->width = count($this->costs[0] ?? []);
     }
 
     /**
@@ -45,11 +61,17 @@ class PathFinder
      */
     public function toNearest(Point $from, string $item): ?array
     {
-        return $this->search(
-            $from,
-            fn (Point $point): bool => $this->map->getItem($point) === $item
-                && !$point->equals($from)
-        );
+        // Goals are looked up by index rather than re-read from the map on
+        // every expanded tile.
+        $goals = [];
+
+        foreach ($this->map->positionsOf($item) as [$y, $x]) {
+            $goals[$this->index($x, $y)] = true;
+        }
+
+        unset($goals[$this->index($from->getX(), $from->getY())]);
+
+        return $this->search($from, $goals);
     }
 
     /**
@@ -57,47 +79,62 @@ class PathFinder
      */
     public function to(Point $from, Point $destination): ?array
     {
-        if (!$this->map->isWalkable($destination)) {
+        if (null === $this->costAt($destination->getX(), $destination->getY())) {
             return null;
         }
 
-        return $this->search($from, static fn (Point $point): bool => $point->equals($destination));
+        return $this->search($from, [$this->index($destination->getX(), $destination->getY()) => true]);
     }
 
     /**
-     * @param callable(Point): bool $isGoal
+     * @param array<int, true> $goals
      *
      * @return list<Point>|null
      */
-    private function search(Point $from, callable $isGoal): ?array
+    private function search(Point $from, array $goals): ?array
     {
-        $start = $this->key($from);
+        if ([] === $goals || 0 === $this->width) {
+            return null;
+        }
+
+        $start = $this->index($from->getX(), $from->getY());
         $best = [$start => 0];
         $cameFrom = [];
 
         $queue = new SplPriorityQueue();
-        $queue->insert($from, 0);
+        $queue->insert($start, 0);
 
         while (!$queue->isEmpty()) {
-            /** @var Point $current */
             $current = $queue->extract();
-            $currentKey = $this->key($current);
 
-            if ($isGoal($current)) {
+            if (isset($goals[$current])) {
                 return $this->rebuild($cameFrom, $current, $start);
             }
 
-            foreach (self::MOVES as [$dx, $dy]) {
-                $neighbour = new Point($current->getX() + $dx, $current->getY() + $dy);
-                $cost = $this->map->cost($neighbour);
+            $x = $current % $this->width;
+            $y = intdiv($current, $this->width);
+            $costSoFar = $best[$current];
 
-                if (null === $cost || !$this->canCross($current, $dx, $dy)) {
+            foreach (self::MOVES as [$dx, $dy]) {
+                $nx = $x + $dx;
+                $ny = $y + $dy;
+                $cost = $this->costs[$ny][$nx] ?? null;
+
+                if (null === $cost) {
                     continue;
                 }
 
-                $step = (0 !== $dx && 0 !== $dy) ? self::DIAGONAL : self::STRAIGHT;
-                $total = $best[$currentKey] + $cost * $step;
-                $key = $this->key($neighbour);
+                // A diagonal may not slip through the corner where two lakes
+                // touch: at least one of the tiles it cuts across must be open.
+                if (0 !== $dx && 0 !== $dy
+                    && null === ($this->costs[$y][$nx] ?? null)
+                    && null === ($this->costs[$ny][$x] ?? null)
+                ) {
+                    continue;
+                }
+
+                $total = $costSoFar + $cost * ((0 !== $dx && 0 !== $dy) ? self::DIAGONAL : self::STRAIGHT);
+                $key = $this->index($nx, $ny);
 
                 if (isset($best[$key]) && $best[$key] <= $total) {
                     continue;
@@ -106,7 +143,7 @@ class PathFinder
                 $best[$key] = $total;
                 $cameFrom[$key] = $current;
                 // SplPriorityQueue pops the highest priority first.
-                $queue->insert($neighbour, -$total);
+                $queue->insert($key, -$total);
             }
         }
 
@@ -114,40 +151,30 @@ class PathFinder
     }
 
     /**
-     * A diagonal step is only allowed when at least one of the two tiles it
-     * cuts across is walkable, so nobody slips through the corner where two
-     * lakes touch.
-     */
-    private function canCross(Point $from, int $dx, int $dy): bool
-    {
-        if (0 === $dx || 0 === $dy) {
-            return true;
-        }
-
-        return $this->map->isWalkable(new Point($from->getX() + $dx, $from->getY()))
-            || $this->map->isWalkable(new Point($from->getX(), $from->getY() + $dy));
-    }
-
-    /**
-     * @param array<string, Point> $cameFrom
+     * @param array<int, int> $cameFrom
      *
      * @return list<Point>
      */
-    private function rebuild(array $cameFrom, Point $goal, string $start): array
+    private function rebuild(array $cameFrom, int $goal, int $start): array
     {
         $route = [];
         $current = $goal;
 
-        while ($this->key($current) !== $start) {
-            $route[] = $current;
-            $current = $cameFrom[$this->key($current)];
+        while ($current !== $start) {
+            $route[] = new Point($current % $this->width, intdiv($current, $this->width));
+            $current = $cameFrom[$current];
         }
 
         return array_reverse($route);
     }
 
-    private function key(Point $point): string
+    private function costAt(int $x, int $y): ?int
     {
-        return $point->getY() . ';' . $point->getX();
+        return $this->costs[$y][$x] ?? null;
+    }
+
+    private function index(int $x, int $y): int
+    {
+        return $y * $this->width + $x;
     }
 }

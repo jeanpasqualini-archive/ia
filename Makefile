@@ -21,8 +21,10 @@ vendor: composer.json composer.lock
 app/log:
 	@mkdir -p app/log
 
-run: install app/log ## Play the game (full screen, needs a real terminal)
-	$(RUN) php ./console
+ARGS ?=
+
+run: install app/log ## Play the game (full screen). ARGS='--play --speed 1000'
+	$(RUN) php ./console $(ARGS)
 
 test: install ## Run the test suite
 	$(RUN) ./vendor/bin/phpunit

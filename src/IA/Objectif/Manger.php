@@ -18,7 +18,19 @@ class Manger implements ObjectifInterface
 {
     private const NOURISHMENT = 10;
 
+    /**
+     * Ticks to wait before searching again after a failed search.
+     *
+     * A failed search is the expensive case: it floods everything reachable
+     * before giving up. And eating only ever removes flowers, so the answer
+     * can hardly turn positive on its own — this is deliberately generous. At
+     * x1 it is twenty seconds of waiting; at x1000, a third of a second.
+     */
+    private const RETRY_EVERY = 300;
+
     private ?Route $route = null;
+
+    private int $nextSearch = 0;
 
     public function __construct(private PlayerHasEstomac $player)
     {
@@ -82,12 +94,22 @@ class Manger implements ObjectifInterface
 
     private function findFood(World $world): ?Route
     {
+        $tick = $world->getTimer()->getTick();
+
+        if ($tick < $this->nextSearch) {
+            return null;
+        }
+
         $steps = (new PathFinder($world->getMap()))
             ->toNearest($this->player->getPosition(), MapBuilder::FLEUR);
 
         if (null === $steps || [] === $steps) {
+            $this->nextSearch = $tick + self::RETRY_EVERY;
+
             return null;
         }
+
+        $this->nextSearch = 0;
 
         $route = new Route($this->player, $steps);
 

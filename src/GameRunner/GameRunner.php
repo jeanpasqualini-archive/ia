@@ -33,17 +33,23 @@ class GameRunner
     private const MEMORY_CHECK_EVERY = 50;
 
     /**
-     * Ticks between two snapshots while the simulation runs on its own.
+     * Frames between two snapshots while the simulation runs on its own.
      *
-     * Snapshotting every tick at full speed means serializing the whole world
-     * a hundred times a second — a lot of allocation churn for a ring that
-     * would then only hold a tenth of a second of history.
+     * Counted in frames rather than ticks so the ring covers the same few
+     * seconds of wall clock at any speed. Counted in ticks, x1000 would fill
+     * the whole ring within a single frame.
      */
-    private const SNAPSHOT_EVERY = 5;
+    private const SNAPSHOT_EVERY_FRAMES = 5;
 
     private bool $quit = false;
 
     private bool $stepRequested = false;
+
+    private float $lastFrameAt = 0.0;
+
+    private int $lastFrameTicks = 0;
+
+    private int $frame = 0;
 
     private ?string $mapFile = null;
 
@@ -92,6 +98,10 @@ class GameRunner
 
         if (isset($options['seed']) && '' !== $options['seed']) {
             $this->seed = (int) $options['seed'];
+        }
+
+        if (isset($options['speed']) && '' !== $options['speed']) {
+            $this->timeControl->setMultiplier((float) $options['speed']);
         }
 
         if (!empty($options['play'])) {
@@ -156,15 +166,44 @@ class GameRunner
         }
 
         $this->stepRequested = false;
+
+        // One snapshot per frame, never per tick: at x1000 a snapshot per tick
+        // would serialize the world thousands of times a second.
         $this->snapshot();
 
-        if ($this->world->update()) {
-            $this->checkMemory();
-            $this->draw();
+        // Measured frame to frame, sleep included: what matters is the speed
+        // actually delivered, not the raw capacity of the machine.
+        $now = microtime(true);
+
+        if ($this->lastFrameAt > 0.0 && $now > $this->lastFrameAt) {
+            $this->timeControl->observe($this->lastFrameTicks / ($now - $this->lastFrameAt));
         }
 
+        $this->lastFrameAt = $now;
+        $ticks = $this->timeControl->isPaused() ? 1 : $this->timeControl->ticksPerFrame();
+        $this->lastFrameTicks = $ticks;
+
+        for ($i = 0; $i < $ticks; $i++) {
+            // Only the last tick of a batch is allowed to speak.
+            $this->logger->mute($i < $ticks - 1);
+            $this->world->update();
+        }
+
+        $this->logger->mute(false);
+
+        $this->checkMemory();
+        $this->draw();
+
+        // Sleep only what is left of the frame budget. Sleeping the full
+        // delay after an already late frame is how a loop that is merely
+        // behind becomes hopelessly behind.
         if (!$this->timeControl->isPaused()) {
-            usleep($this->timeControl->delay());
+            $spent = (int) ((microtime(true) - $now) * 1_000_000);
+            $remaining = $this->timeControl->frameDelay() - $spent;
+
+            if ($remaining > 0) {
+                usleep($remaining);
+            }
         }
 
         return true;
@@ -310,13 +349,13 @@ class GameRunner
 
     /**
      * Freeze the current world. Every step is worth keeping when the user
-     * drives them one by one; while playing, one every few ticks is enough.
+     * drives them one by one; while playing, one every few frames is enough.
      */
     private function snapshot(): void
     {
-        if (!$this->timeControl->isPaused()
-            && !$this->world->getTimer()->isTime(self::SNAPSHOT_EVERY)
-        ) {
+        $this->frame++;
+
+        if (!$this->timeControl->isPaused() && 0 !== $this->frame % self::SNAPSHOT_EVERY_FRAMES) {
             return;
         }
 

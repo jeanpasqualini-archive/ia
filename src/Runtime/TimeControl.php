@@ -13,22 +13,26 @@ namespace Runtime;
  */
 class TimeControl
 {
+    /** Ticks per second at x1. */
+    public const BASE_RATE = 15;
+
+    /** Frames per second, whatever the speed. Nobody can watch 15000. */
+    public const RENDER_RATE = 15;
+
     /**
-     * Delay between two automatic ticks, in microseconds, slowest first.
+     * Speed ladder, in 1-2-5 steps so each press is a meaningful jump rather
+     * than a rounding difference.
      *
-     * @var list<array{label: string, delay: int}>
+     * @var list<float>
      */
-    private const SPEEDS = [
-        ['label' => 'x0.25', 'delay' => 400_000],
-        ['label' => 'x0.5', 'delay' => 200_000],
-        ['label' => 'x1', 'delay' => 100_000],
-        ['label' => 'x2', 'delay' => 50_000],
-        ['label' => 'x4', 'delay' => 10_000],
-    ];
+    private const SPEEDS = [0.25, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000];
 
     private const DEFAULT_SPEED = 2;
 
     private int $speed = self::DEFAULT_SPEED;
+
+    /** Smoothed tick rate actually achieved, null until measured. */
+    private ?float $observedRate = null;
 
     public function __construct(
         private bool $paused = true,
@@ -56,14 +60,33 @@ class TimeControl
         $this->paused = false;
     }
 
+    /**
+     * Jump to the ladder step closest to $multiplier.
+     */
+    public function setMultiplier(float $multiplier): void
+    {
+        $best = 0;
+
+        foreach (self::SPEEDS as $index => $speed) {
+            if (abs($speed - $multiplier) < abs(self::SPEEDS[$best] - $multiplier)) {
+                $best = $index;
+            }
+        }
+
+        $this->speed = $best;
+        $this->observedRate = null;
+    }
+
     public function faster(): void
     {
         $this->speed = min($this->speed + 1, count(self::SPEEDS) - 1);
+        $this->observedRate = null;
     }
 
     public function slower(): void
     {
         $this->speed = max($this->speed - 1, 0);
+        $this->observedRate = null;
     }
 
     public function isFastest(): bool
@@ -76,14 +99,69 @@ class TimeControl
         return 0 === $this->speed;
     }
 
-    public function delay(): int
+    public function multiplier(): float
     {
-        return self::SPEEDS[$this->speed]['delay'];
+        return self::SPEEDS[$this->speed];
     }
 
     public function speedLabel(): string
     {
-        return self::SPEEDS[$this->speed]['label'];
+        $multiplier = $this->multiplier();
+
+        return 'x' . ($multiplier < 1 ? rtrim(rtrim(number_format($multiplier, 2), '0'), '.') : (string) (int) $multiplier);
+    }
+
+    /**
+     * Ticks to run before drawing again.
+     *
+     * Past the render rate, going faster cannot mean sleeping less — there is
+     * no sleep left. It means computing more per frame, which is why high
+     * multipliers batch instead of spinning.
+     */
+    public function ticksPerFrame(): int
+    {
+        $wanted = $this->multiplier() * self::BASE_RATE;
+
+        return max(1, (int) round($wanted / self::RENDER_RATE));
+    }
+
+    /**
+     * Microseconds to sleep after a frame. Below the render rate the delay
+     * carries the speed; above it, the batch does and the delay just keeps
+     * the display watchable.
+     */
+    public function frameDelay(): int
+    {
+        $wanted = $this->multiplier() * self::BASE_RATE;
+        $rate = min($wanted, self::RENDER_RATE);
+
+        return (int) round(1_000_000 / $rate);
+    }
+
+    /**
+     * Record the tick rate actually reached, smoothed so the readout does not
+     * jitter. Asking for x1000 does not make the machine deliver it.
+     */
+    public function observe(float $ticksPerSecond): void
+    {
+        $this->observedRate = null === $this->observedRate
+            ? $ticksPerSecond
+            : $this->observedRate * 0.7 + $ticksPerSecond * 0.3;
+    }
+
+    public function observedMultiplier(): ?float
+    {
+        return null === $this->observedRate ? null : $this->observedRate / self::BASE_RATE;
+    }
+
+    /**
+     * True when the machine is not keeping up with the requested speed.
+     */
+    public function isLagging(): bool
+    {
+        $observed = $this->observedMultiplier();
+
+        return null !== $observed && $observed < $this->multiplier() * 0.8;
     }
 
     public function isTimeMachine(): bool
