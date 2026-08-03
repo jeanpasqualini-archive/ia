@@ -1,12 +1,13 @@
-FROM caiotava/docker-php7-ncurses
+FROM php:8.4-cli
 
-RUN apt-get clean && apt-get update && apt-get install -y locales
+# php-tui renders through ANSI escape sequences, so no terminal extension is
+# needed. ext-intl is its only hard requirement (grapheme-aware width).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libicu-dev unzip \
+    && docker-php-ext-install -j"$(nproc)" intl \
+    && rm -rf /var/lib/apt/lists/*
 
-COPY ./default_locale /etc/default/locale
-RUN chmod 0755 /etc/default/locale
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-ENV LC_ALL=fr_FR.UTF-8
-ENV LANG=fr_FR.UTF-8
-ENV LANGUAGE=fr:en
-
-RUN locale-gen fr_FR.UTF-8
+ENV LC_ALL=C.UTF-8
+ENV LANG=C.UTF-8

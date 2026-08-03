@@ -1,9 +1,13 @@
-version: "3.2"
 services:
   app:
     build: ./
+    # Capped on purpose: without a limit an OOM takes down the whole Docker VM
+    # and the game just dies with exit 137. With one, the Memoire panel shows a
+    # real ceiling and the log warns before the kernel steps in.
+    mem_limit: 512m
     volumes:
       - "$PWD:/app"
-      - "./ncurses.ini:/etc/php5/cli/conf.d/ncurses.ini"
       - "./app/log/:/tmp/log/"
     working_dir: /app
+    environment:
+      COMPOSER_HOME: /tmp/composer

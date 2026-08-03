@@ -2,22 +2,26 @@
     "name": "jean-pasqualini/ia",
     "description": "ia php testing",
     "require": {
-        "symfony/console": "2.*",
-        "psr/log": "^1.0",
-        "symfony/event-dispatcher": "^3.0",
-        "symfony/var-dumper": "2.*"
+        "php": "^8.2",
+        "ext-intl": "*",
+        "php-tui/php-tui": "^0.2",
+        "psr/log": "^3.0",
+        "symfony/console": "^7.0",
+        "symfony/event-dispatcher": "^7.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.0"
     },
     "license": "MIT",
-    "autoload" :
-    {
-      "psr-0":
-      {
-          "" : "src/"
-      },
-      "psr-4" :
-      {
-          "CurseFramework\\" : "ncurses-framework\\Lib"
-      }
+    "autoload": {
+        "psr-4": {
+            "": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\": "tests/"
+        }
     },
     "authors": [
         {

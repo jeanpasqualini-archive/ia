@@ -5,3 +5,5 @@ app/log/*
 vendor/
 nohup.out
 dev/nohup.out
+.phpunit.result.cache
+phpunit.xml
