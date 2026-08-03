@@ -1,71 +1,64 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Map\Player;
+
 use IA\CatIA;
-use Map\Location\Direction;
+use IA\IAInterface;
 use Map\Location\Point;
 use Map\Player\Chat\Estomac;
-use Map\Render\NCurseRender;
 use Map\World\World;
-use Symfony\Component\EventDispatcher\EventDispatcher;
 
-/**
- * Created by PhpStorm.
- * User: Freelance
- * Date: 24/12/2015
- * Time: 11:37
- */
 class Chat extends Player implements PlayerHasEstomac
 {
-    protected $ia;
+    private CatIA $ia;
 
-    protected $estomac;
+    private Estomac $estomac;
 
     public function __construct()
     {
         $this->position = new Point(5, 5);
-
         $this->estomac = new Estomac($this);
-
-        $this->eventDispatcher = new EventDispatcher();
-
         $this->ia = new CatIA($this);
 
         parent::__construct();
     }
 
-    public function getEstomac()
+    public function getEstomac(): Estomac
     {
         return $this->estomac;
     }
 
-    public function move()
+    public function move(): void
     {
         $this->position->move();
     }
 
-    public function getIa()
+    public function getIa(): IAInterface
     {
         return $this->ia;
     }
 
-    public function update(World $world)
+    public function update(World $world): void
     {
         parent::update($world);
 
-        //$key = ncurses_getch();
-
-        $this->getPosition()->setDirection($world->getInputController()->getDirection());
+        // Manual steering only applies while the cat has nothing better to do:
+        // the previous version overwrote the direction the AI had just set,
+        // so goals and arrow keys fought each other every tick.
+        if ([] === $this->ia->getObjectifs()) {
+            $this->position->setDirection($world->getInputController()->getDirection());
+        }
 
         $this->estomac->update($world);
     }
 
-    public function __sleep()
+    /**
+     * @return list<string>
+     */
+    public function __sleep(): array
     {
-        return array(
-            "position",
-            "ia",
-            "estomac"
-        );
+        return ['position', 'ia', 'estomac', 'identifiant', 'life', 'resistance', 'puissance'];
     }
 }

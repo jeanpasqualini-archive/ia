@@ -1,48 +1,48 @@
 <?php
-/**
- * Created by PhpStorm.
- * User: darkilliant
- * Date: 29/12/15
- * Time: 13:01
- */
+
+declare(strict_types=1);
 
 namespace Logger;
 
-
 use Psr\Log\AbstractLogger;
+use SplFileObject;
+use Stringable;
 
-class FileLogger extends AbstractLogger {
+class FileLogger extends AbstractLogger
+{
+    private ?SplFileObject $file = null;
 
-    protected $file;
-
-    protected $path;
-
-    public function __construct($path)
+    public function __construct(private string $path)
     {
-        $this->path = $path;
-        $this->file = new \SplFileObject($this->path, "w+");
+    }
+
+    public function log($level, string|Stringable $message, array $context = []): void
+    {
+        $this->file()->fwrite(
+            '[' . date('H:i:s') . "] [$level] : " . $message . ' (' . json_encode($context) . ')' . PHP_EOL
+        );
+    }
+
+    private function file(): SplFileObject
+    {
+        if (null === $this->file) {
+            $directory = dirname($this->path);
+
+            if (!is_dir($directory)) {
+                mkdir($directory, 0o777, true);
+            }
+
+            $this->file = new SplFileObject($this->path, 'a');
+        }
+
+        return $this->file;
     }
 
     /**
-     * Logs with an arbitrary level.
-     *
-     * @param mixed $level
-     * @param string $message
-     * @param array $context
-     * @return null
+     * @return list<string>
      */
-    public function log($level, $message, array $context = array())
-    {
-        $this->file->fwrite("[".date("H:i:s")."] [$level] : ".$message. " (".json_encode($context).")".PHP_EOL);
-    }
-
-    public function __sleep()
+    public function __sleep(): array
     {
         return ['path'];
-    }
-
-    public function __wakeup()
-    {
-        $this->file = new \SplFileObject($this->path, "w+");
     }
 }

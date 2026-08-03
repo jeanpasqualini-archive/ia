@@ -1,27 +1,26 @@
 <?php
 
-/**
- * Created by PhpStorm.
- * User: Freelance
- * Date: 24/12/2015
- * Time: 14:50
- */
+declare(strict_types=1);
+
 class Timer
 {
-    protected $tick = 0;
+    private int $tick = 0;
 
-    public function update()
+    public function update(): void
     {
         $this->tick++;
     }
 
-    public function getTick()
+    public function getTick(): int
     {
         return $this->tick;
     }
 
-    public function isTime($probabiltiy)
+    /**
+     * True once every $every ticks.
+     */
+    public function isTime(int $every): bool
     {
-        return $this->tick % $probabiltiy == 0;
+        return 0 === $this->tick % $every;
     }
 }

@@ -1,84 +1,90 @@
 <?php
-/**
- * Created by PhpStorm.
- * User: Freelance
- * Date: 24/12/2015
- * Time: 10:58
- */
+
+declare(strict_types=1);
 
 namespace Map\Location;
 
+use Stringable;
 
-class Point
+class Point implements Stringable
 {
-    protected $x;
+    private Direction $direction;
 
-    protected $y;
-
-    protected $speed = 1;
-
-    protected $direction;
-
-    public function __construct($x, $y)
+    public function __construct(private int $x, private int $y, private int $speed = 1)
     {
         $this->direction = new Direction(0, 0);
-
-        $this->x = $x;
-
-        $this->y = $y;
     }
 
-    public function setSpeed($speed)
+    public function setSpeed(int $speed): void
     {
         $this->speed = $speed;
     }
 
-    public function increaseSpeed()
+    public function increaseSpeed(): void
     {
-        $this->speed ++;
+        $this->speed++;
     }
 
-    public function decreaseSpeed()
+    public function decreaseSpeed(): void
     {
-        if($this->speed < 2) return;
+        if ($this->speed < 2) {
+            return;
+        }
 
-        $this->speed --;
+        $this->speed--;
     }
 
-    public function getX()
+    public function getX(): int
     {
         return $this->x;
     }
 
-    public function getY()
+    public function getY(): int
     {
         return $this->y;
     }
 
-    public function setX($x)
+    public function setX(int $x): void
     {
         $this->x = $x;
     }
 
-    public function setY($y)
+    public function setY(int $y): void
     {
         $this->y = $y;
     }
 
-    public function move()
+    public function move(): void
     {
-        $this->x = $this->x + ($this->direction->getX() * $this->speed);
-
-        $this->y = $this->y + ($this->direction->getY() * $this->speed);
+        $this->x += $this->direction->getX() * $this->speed;
+        $this->y += $this->direction->getY() * $this->speed;
     }
 
-    public function setDirection(Direction $direction)
+    /**
+     * Manhattan distance, the metric the map uses to rank nearby items.
+     */
+    public function distanceTo(self $other): int
+    {
+        return abs($this->x - $other->x) + abs($this->y - $other->y);
+    }
+
+    public function equals(self $other): bool
+    {
+        return $this->x === $other->x && $this->y === $other->y;
+    }
+
+    public function getDirection(): Direction
+    {
+        return $this->direction;
+    }
+
+    public function setDirection(Direction $direction): void
     {
         $this->direction = $direction;
     }
 
-    public function __toString()
+    public function __toString(): string
     {
-        return $this->y.";".$this->x;
+        return $this->y . ';' . $this->x;
     }
 }

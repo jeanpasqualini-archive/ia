@@ -1,30 +1,35 @@
 <?php
-/**
- * Created by PhpStorm.
- * User: jpasqualini
- * Date: 19/04/18
- * Time: 10:10
- */
+
+declare(strict_types=1);
 
 namespace Logger;
 
-
 use Psr\Log\AbstractLogger;
+use Stringable;
 
 class BufferLogger extends AbstractLogger
 {
-    private $logs = [];
+    /** @var list<string> */
+    private array $logs = [];
 
-    public function log($level, $message, array $context = array())
+    public function __construct(private int $limit = 50)
     {
-        if (count($this->logs) > 7) {
+    }
+
+    public function log($level, string|Stringable $message, array $context = []): void
+    {
+        if (count($this->logs) >= $this->limit) {
             $this->logs = array_slice($this->logs, 1);
         }
 
-        $this->logs[] = "[".date("H:i:s")."] [$level] : ".$message;
+        $this->logs[] = '[' . date('H:i:s') . "] [$level] : " . $message;
     }
 
-    public function getLogs() {
+    /**
+     * @return list<string>
+     */
+    public function getLogs(): array
+    {
         return $this->logs;
     }
 }

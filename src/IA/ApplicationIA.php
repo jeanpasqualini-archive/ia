@@ -1,35 +1,25 @@
 <?php
-/**
- * Created by PhpStorm.
- * User: Freelance
- * Date: 24/12/2015
- * Time: 14:01
- */
+
+declare(strict_types=1);
 
 namespace IA;
 
-
 use Map\World\World;
-use Map\Player\Player;
-use IA\IAInterface;
 
+/**
+ * Drives every player's own AI, once per tick.
+ */
 class ApplicationIA implements IAInterface
 {
-    public function update(World $world)
+    public function update(World $world): void
     {
-        $players = $world->getPlayerCollection();
-
-        foreach($players as $player)
-        {
-            /** @var $player Player */
+        foreach ($world->getPlayerCollection() as $player) {
             $player->getIa()->update($world);
-
             $player->update($world);
-        }
 
-        if($world->getTimer()->isTime(100))
-        {
-            gc_collect_cycles();
+            // Single authority on bounds: whatever moved the player (a goal,
+            // the keyboard, a stale direction), it cannot leave the map.
+            $world->getMap()->clamp($player->getPosition());
         }
     }
 }

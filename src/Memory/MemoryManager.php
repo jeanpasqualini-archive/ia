@@ -1,55 +1,60 @@
 <?php
+
+declare(strict_types=1);
+
 namespace Memory;
 
+use RuntimeException;
 
-class MemoryManager {
+class MemoryManager
+{
+    private FlashMemory $flashMemory;
 
-    /** @var FlashMemory */
-    protected $flashMemory;
-
-    /**
-     * @var string
-     */
-    private $id = 'game';
-
-    public function __construct(string $id = 'game')
+    public function __construct(private string $id = 'game', private ?string $cacheDir = null)
     {
         $this->flashMemory = new FlashMemory();
-        $this->id = $id;
+        $this->cacheDir ??= __DIR__ . '/../../app/cache';
     }
 
-    /**
-     * @param string $id
-     */
-    public function setId(string $id)
+    public function setId(string $id): void
     {
         $this->id = $id;
     }
 
-    public function getFlashMemory()
+    public function getFlashMemory(): FlashMemory
     {
         return $this->flashMemory;
     }
 
-    public function persist()
+    /**
+     * Dump every retained snapshot to disk and return the file written.
+     */
+    public function persist(): string
     {
-        $ds = DIRECTORY_SEPARATOR;
+        // The original built this path with an undefined constant, so the
+        // whole feature raised an Error instead of writing anything.
+        $directory = $this->cacheDir . '/' . $this->id;
 
-        $cacheMemory = __DIR__."/../../app/cache/".c."/";
+        if (!is_dir($directory) && !mkdir($directory, 0o777, true) && !is_dir($directory)) {
+            throw new RuntimeException(sprintf('impossible de creer %s', $directory));
+        }
 
-        if(!file_exists($cacheMemory)) mkdir($cacheMemory);
+        $path = $directory . '/memory.dump';
 
-        file_put_contents($cacheMemory."memory.dump", serialize($this->getFlashMemory()->all()));
+        file_put_contents($path, serialize($this->getFlashMemory()->all()));
 
-        return $this->id;
+        return $path;
     }
 
-    public function __sleep()
+    /**
+     * @return list<string>
+     */
+    public function __sleep(): array
     {
-        return ['id'];
+        return ['id', 'cacheDir'];
     }
 
-    public function __wakeup()
+    public function __wakeup(): void
     {
         $this->flashMemory = new FlashMemory();
     }

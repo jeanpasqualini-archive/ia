@@ -1,88 +1,66 @@
 <?php
-/**
- * Created by PhpStorm.
- * User: darkilliant
- * Date: 29/12/15
- * Time: 13:47
- */
+
+declare(strict_types=1);
 
 namespace Map\Path;
 
-
-use Map\Builder\MapBuilder;
 use Map\Location\Direction;
 use Map\Location\Point;
-use Map\Player\Player;
+use Map\Player\PlayerInterface;
 use Map\World\World;
 use Psr\Log\LogLevel;
 
-class PathPoint {
+/**
+ * Greedy walk towards a destination: one step per tick on each axis, terrain
+ * is ignored (nothing blocks movement in this world yet).
+ */
+class PathPoint
+{
+    private bool $end = false;
 
-    protected $player;
-
-    protected $destination;
-
-    protected $end;
-
-    public function __construct(Player $player, Point $destination)
+    public function __construct(private PlayerInterface $player, private Point $destination)
     {
-        $this->player = $player;
-
-        $this->destination = $destination;
-
-        $this->end = false;
     }
 
-    public function getDestination()
+    public function getDestination(): Point
     {
         return $this->destination;
     }
 
-    public function update(World $world)
+    public function update(World $world): void
     {
-        $positionPlayer = $this->player->getPosition();
+        $position = $this->player->getPosition();
 
-        if($positionPlayer->getX() == $this->destination->getX() && $positionPlayer->getY() == $this->destination->getY())
-        {
+        if ($position->equals($this->destination)) {
             $this->end = true;
+
             return;
         }
 
-        $direction = array(
-            "X" => 0,
-            "Y" => 0
+        $direction = new Direction(
+            $this->step($position->getX(), $this->destination->getX()),
+            $this->step($position->getY(), $this->destination->getY()),
         );
 
-        //$world->getMap()->setItem($positionPlayer, MapBuilder::HERBE);
+        $position->setDirection($direction);
+        $position->move();
 
-        if($positionPlayer->getX() < $this->destination->getX())
-        {
-            $direction["X"] = 1;
-        }
-
-        if($positionPlayer->getX() > $this->destination->getX())
-        {
-            $direction["X"] = -1;
-        }
-
-        if($positionPlayer->getY() < $this->destination->getY())
-        {
-            $direction["Y"] = 1;
-        }
-
-        if($positionPlayer->getY() > $this->destination->getY())
-        {
-            $direction["Y"] = -1;
-        }
-
-        $positionPlayer->setDirection(new Direction($direction["X"], $direction["Y"]));
-        $positionPlayer->move();
-
-        $world->getLogger()->log(LogLevel::INFO, "le joueur ".get_class($this->player). " est en X : ".$positionPlayer->getX()." Y : ".$positionPlayer->getY()." et il se déplace en X : ".$direction["X"]." Y : ".$direction["Y"]);
+        $world->getLogger()->log(LogLevel::INFO, sprintf(
+            '%s est en %s et se deplace en %d;%d',
+            $this->player->getIdentifiant(),
+            (string) $position,
+            $direction->getY(),
+            $direction->getX(),
+        ));
     }
 
-    public function isEnd()
+    public function isEnd(): bool
     {
         return $this->end;
+    }
+
+    private function step(int $from, int $to): int
+    {
+        return $to <=> $from;
     }
 }

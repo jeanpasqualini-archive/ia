@@ -1,146 +1,138 @@
 <?php
+
+declare(strict_types=1);
+
 namespace Map\World;
+
 use IA\ApplicationIA;
-use InputController\KeyboardInputController;
-use Logger\FileLogger;
+use InputController\InputControllerInterface;
+use InputController\NullInputController;
 use Logger\MultipleLogger;
 use Map\Builder\MapBuilder;
-use Memory\MemoryManager;
+use Map\Player\PlayerInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\LogLevel;
-use Snapshot\Instant;
 use Symfony\Component\EventDispatcher\EventDispatcher;
 use Timer;
 
-/**
- * Created by PhpStorm.
- * User: Freelance
- * Date: 24/12/2015
- * Time: 14:02
- */
 class World
 {
-    protected $players;
+    /** Target simulation rate, in updates per second. */
+    private const UPDATES_PER_SECOND = 15;
 
-    protected $map;
+    private ApplicationIA $worldIA;
 
-    protected $worldIA;
+    private Timer $timer;
 
-    protected $timer;
+    private EventDispatcher $eventDispatcher;
 
-    protected $inputController;
-
-    protected $logger;
-
-    protected $eventDispatcher;
-
-    protected $lastUpdateTime = 0;
-
-    protected static $instance;
+    private float $lastUpdateTime = 0.0;
 
     /**
-     * @return World
+     * @param list<PlayerInterface> $players
      */
-    public static function getInstance()
-    {
-        return self::$instance;
-    }
-
-    public function __construct(MapBuilder $map, array $players = array(), LoggerInterface $logger = null)
-    {
-        self::$instance = $this;
-
-        $this->players = $players;
-
-        $this->map = $map;
-
+    public function __construct(
+        private MapBuilder $map,
+        private array $players = [],
+        private LoggerInterface $logger = new MultipleLogger(),
+        private InputControllerInterface $inputController = new NullInputController(),
+    ) {
         $this->worldIA = new ApplicationIA();
-
         $this->timer = new Timer();
-
-        $this->inputController = new KeyboardInputController($logger);
-
-        $this->logger = $logger;
-
         $this->eventDispatcher = new EventDispatcher();
     }
 
-    public function getCachePath()
-    {
-        return __DIR__."/../../../app/cache/";
-    }
-
-    public function getLogPath()
-    {
-        return __DIR__."/../../../app/logs/";
-    }
-
-    public function getInputController()
+    public function getInputController(): InputControllerInterface
     {
         return $this->inputController;
     }
 
-    public function getLogger()
+    public function setInputController(InputControllerInterface $inputController): void
+    {
+        $this->inputController = $inputController;
+    }
+
+    public function getLogger(): LoggerInterface
     {
         return $this->logger;
     }
 
-    public function getEventDispatcher()
+    public function setLogger(LoggerInterface $logger): void
+    {
+        $this->logger = $logger;
+    }
+
+    public function getEventDispatcher(): EventDispatcher
     {
         return $this->eventDispatcher;
     }
 
+    /**
+     * Advance the simulation by one tick.
+     *
+     * Returns false when the call was too early and nothing changed, so the
+     * caller can skip the render.
+     */
     public function update(): bool
     {
-        $updateTime = microtime(true);
+        $now = microtime(true);
+        $minimumInterval = 1 / self::UPDATES_PER_SECOND;
+        $elapsed = $now - $this->lastUpdateTime;
 
-        $limit = 1000 / 15 / 1000;
+        if ($elapsed < $minimumInterval) {
+            // usleep() takes microseconds: the original code passed seconds
+            // here, which rounded down to 0 and burned a full core.
+            usleep((int) (($minimumInterval - $elapsed) * 1_000_000));
 
-        $betweenUpdate = $updateTime - $this->lastUpdateTime;
-
-        if($betweenUpdate < $limit)
-        {
-            usleep($limit - $betweenUpdate);
             return false;
         }
 
-        $this->lastUpdateTime = $updateTime;
+        $this->lastUpdateTime = $now;
 
-        $this->logger->log(LogLevel::INFO, "Update world");
+        $this->logger->log(LogLevel::INFO, 'Update world');
 
+        // Input is drained by the game loop, not here: both draining the same
+        // event stream would make each of them miss half the key presses.
         $this->timer->update();
-
-        $this->inputController->update();
-
         $this->worldIA->update($this);
 
         return true;
-
-   //     $this->memoryManager->getFlashMemory()->addInstant(new Instant($this));
     }
 
-    public function getTimer()
+    public function getTimer(): Timer
     {
         return $this->timer;
     }
 
-    public function getMap()
+    public function getMap(): MapBuilder
     {
         return $this->map;
     }
 
-    public function getPlayerCollection()
+    /**
+     * @return list<PlayerInterface>
+     */
+    public function getPlayerCollection(): array
     {
         return $this->players;
     }
 
-    public function __wakeup()
+    /**
+     * Only the simulated state travels through a snapshot. Services (logger,
+     * input, dispatcher) are rebuilt on wake up and re-injected by the caller,
+     * which is what keeps the terminal handle out of the serialized payload.
+     *
+     * @return list<string>
+     */
+    public function __sleep(): array
     {
-        $this->logger = new MultipleLogger();
+        return ['map', 'players', 'worldIA', 'timer', 'lastUpdateTime'];
     }
 
-    public function setLogger($logger)
+    public function __wakeup(): void
     {
-        $this->logger = $logger;
+        $this->logger = new MultipleLogger();
+        $this->inputController = new NullInputController();
+        $this->eventDispatcher = new EventDispatcher();
     }
 }

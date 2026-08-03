@@ -1,31 +1,26 @@
 <?php
-/**
- * Created by PhpStorm.
- * User: darkilliant
- * Date: 28/12/15
- * Time: 13:32
- */
+
+declare(strict_types=1);
 
 namespace Snapshot;
 
-
-class InstantCollectionLimited extends InstantCollection {
-
-    protected $limit = 0;
-
-    public function __construct($limit)
+/**
+ * Ring buffer of snapshots: once full, adding one drops the oldest.
+ */
+class InstantCollectionLimited extends InstantCollection
+{
+    public function __construct(protected int $limit = 10)
     {
-        $this->instantCollection = [];
-
-        $this->limit = $limit;
     }
 
-    public function add(Instant $instant)
+    public function add(Instant $instant): void
     {
-        if(count($this->instantCollection) >= $this->limit) {
-            $this->instantCollection = array_slice($this->instantCollection, 1, 10);
-        }
-
         parent::add($instant);
+
+        if (count($this->instantCollection) > $this->limit) {
+            $this->instantCollection = array_values(
+                array_slice($this->instantCollection, -$this->limit)
+            );
+        }
     }
 }

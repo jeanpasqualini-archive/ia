@@ -1,12 +1,10 @@
 <?php
 
-/**
- * Created by PhpStorm.
- * User: Freelance
- * Date: 24/12/2015
- * Time: 14:37
- */
+declare(strict_types=1);
+
+namespace Map\Gun;
+
 interface GunInterface
 {
-    public function getPuissance();
+    public function getPuissance(): int;
 }

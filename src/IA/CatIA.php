@@ -1,58 +1,94 @@
 <?php
-/**
- * Created by PhpStorm.
- * User: Freelance
- * Date: 24/12/2015
- * Time: 13:59
- */
+
+declare(strict_types=1);
 
 namespace IA;
 
-
 use IA\Objectif\Manger;
+use IA\Objectif\ObjectifInterface;
+use Map\Location\Direction;
 use Map\Player\Chat;
+use Map\Player\Chat\Event\FullEvent;
+use Map\Player\Chat\Event\HungryEvent;
 use Map\World\World;
-use Symfony\Component\EventDispatcher\Event;
-use Symfony\Component\EventDispatcher\EventDispatcher;
 
+/**
+ * Reactive AI: the stomach emits events, the AI turns them into goals, and
+ * every goal gets a chance to act on each tick.
+ */
 class CatIA implements IAInterface
 {
-    protected $chat;
+    /** @var list<ObjectifInterface> */
+    private array $objectifs = [];
 
-    protected $objectifs = array();
-
-    public function __construct(Chat $chat)
+    public function __construct(private Chat $chat)
     {
-        $this->chat = $chat;
-
-        $this->chat->getEstomac()->getEventDispatcher()->addListener("hungry", array($this, "onEstomacHungry"));
-        $this->chat->getEstomac()->getEventDispatcher()->addListener("full", array($this, "onEstomacFull"));
+        $dispatcher = $this->chat->getEstomac()->getEventDispatcher();
+        $dispatcher->addListener(HungryEvent::NAME, $this->onEstomacHungry(...));
+        $dispatcher->addListener(FullEvent::NAME, $this->onEstomacFull(...));
     }
 
-    public function onEstomacHungry(Event $event, $eventName, EventDispatcher $eventDispatcher)
+    public function onEstomacHungry(): void
     {
-        if(!empty($this->objectifs)) return;
+        if ([] !== $this->objectifs) {
+            return;
+        }
 
         $this->objectifs[] = new Manger($this->chat);
     }
 
-    public function onEstomacFull(Event $event, $eventName, EventDispatcher $eventDispatcher)
+    public function onEstomacFull(): void
     {
-        $this->objectifs = array();
+        if ([] === $this->objectifs) {
+            return;
+        }
+
+        $this->objectifs = [];
+
+        // Drop the heading the goal was steering with, otherwise the cat keeps
+        // drifting in that direction once it is fed.
+        $this->chat->getPosition()->setDirection(new Direction(0, 0));
     }
 
-    public function getObjectifs()
+    /**
+     * @return list<ObjectifInterface>
+     */
+    public function getObjectifs(): array
     {
         return $this->objectifs;
     }
 
-    public function update(World $world)
+    public function update(World $world): void
     {
-        $this->chat->move();
+        // Goals own the movement while they are active. The previous version
+        // also stepped the cat here, so a goal moved it twice per tick and it
+        // oscillated around its destination without ever arriving.
+        if ([] === $this->objectifs) {
+            $this->chat->move();
 
-        foreach($this->objectifs as $objectif)
-        {
+            return;
+        }
+
+        foreach ($this->objectifs as $objectif) {
             $objectif->update($world);
         }
+    }
+
+    /**
+     * Listeners are closures bound to $this, which cannot be serialized: they
+     * are dropped on sleep and rebuilt on wake up.
+     *
+     * @return list<string>
+     */
+    public function __sleep(): array
+    {
+        return ['chat', 'objectifs'];
+    }
+
+    public function __wakeup(): void
+    {
+        $dispatcher = $this->chat->getEstomac()->getEventDispatcher();
+        $dispatcher->addListener(HungryEvent::NAME, $this->onEstomacHungry(...));
+        $dispatcher->addListener(FullEvent::NAME, $this->onEstomacFull(...));
     }
 }

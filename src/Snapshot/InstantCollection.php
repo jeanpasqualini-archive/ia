@@ -1,92 +1,66 @@
 <?php
-/**
- * Created by PhpStorm.
- * User: darkilliant
- * Date: 28/12/15
- * Time: 12:09
- */
+
+declare(strict_types=1);
 
 namespace Snapshot;
 
+use Countable;
+use Iterator;
 
-class InstantCollection implements \Iterator, \Countable {
+/**
+ * @implements Iterator<int, Instant>
+ */
+class InstantCollection implements Iterator, Countable
+{
+    /** @var list<Instant> */
+    protected array $instantCollection = [];
 
-    protected $instantCollection = [];
+    protected int $index = 0;
 
-    protected $index = 0;
-
-    public function all()
+    /**
+     * @return list<Instant>
+     */
+    public function all(): array
     {
         return $this->instantCollection;
     }
 
-    public function add(Instant $instant)
+    public function add(Instant $instant): void
     {
         $this->instantCollection[] = $instant;
     }
 
-    /**
-     * (PHP 5 &gt;= 5.0.0)<br/>
-     * Return the current element
-     * @link http://php.net/manual/en/iterator.current.php
-     * @return mixed Can return any type.
-     */
-    public function current()
+    public function current(): Instant
     {
         return $this->instantCollection[$this->index];
     }
 
-    public function get($index)
+    public function get(int $index): ?Instant
     {
         return $this->instantCollection[$index] ?? null;
     }
 
-    /**
-     * (PHP 5 &gt;= 5.0.0)<br/>
-     * Move forward to next element
-     * @link http://php.net/manual/en/iterator.next.php
-     * @return void Any returned value is ignored.
-     */
-    public function next()
+    public function next(): void
     {
         $this->index++;
     }
 
-    /**
-     * (PHP 5 &gt;= 5.0.0)<br/>
-     * Return the key of the current element
-     * @link http://php.net/manual/en/iterator.key.php
-     * @return mixed scalar on success, or null on failure.
-     */
-    public function key()
+    public function key(): int
     {
         return $this->index;
     }
 
-    /**
-     * (PHP 5 &gt;= 5.0.0)<br/>
-     * Checks if current position is valid
-     * @link http://php.net/manual/en/iterator.valid.php
-     * @return boolean The return value will be casted to boolean and then evaluated.
-     * Returns true on success or false on failure.
-     */
-    public function valid()
+    public function valid(): bool
     {
-        return isset($this->instantCollection[$this->index + 1]);
+        return isset($this->instantCollection[$this->index]);
     }
 
-    /**
-     * (PHP 5 &gt;= 5.0.0)<br/>
-     * Rewind the Iterator to the first element
-     * @link http://php.net/manual/en/iterator.rewind.php
-     * @return void Any returned value is ignored.
-     */
-    public function rewind()
+    public function rewind(): void
     {
         $this->index = 0;
     }
 
-    public function count()
+    public function count(): int
     {
         return count($this->instantCollection);
     }

@@ -1,33 +1,21 @@
 <?php
-/**
- * Created by PhpStorm.
- * User: Freelance
- * Date: 24/12/2015
- * Time: 11:42
- */
+
+declare(strict_types=1);
 
 namespace Map\Location;
 
-
 class Direction
 {
-    protected $x;
-
-    protected $y;
-
-    public function __construct($x, $y)
+    public function __construct(private int $x, private int $y)
     {
-        $this->x = $x;
-
-        $this->y = $y;
     }
 
-    public function getX()
+    public function getX(): int
     {
         return $this->x;
     }
 
-    public function getY()
+    public function getY(): int
     {
         return $this->y;
     }

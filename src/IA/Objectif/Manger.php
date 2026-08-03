@@ -1,89 +1,93 @@
 <?php
-/**
- * Created by PhpStorm.
- * User: darkilliant
- * Date: 29/12/15
- * Time: 12:58
- */
+
+declare(strict_types=1);
 
 namespace IA\Objectif;
 
-
 use Map\Builder\MapBuilder;
-use Map\Location\Direction;
-use Map\Location\Point;
 use Map\Path\PathPoint;
-use Map\Player\Player;
 use Map\Player\PlayerHasEstomac;
 use Map\World\World;
 use Psr\Log\LogLevel;
 
-class Manger {
+/**
+ * Walk to the closest flower, eat it, repeat.
+ */
+class Manger implements ObjectifInterface
+{
+    private const NOURISHMENT = 10;
 
-    protected $player;
+    private ?PathPoint $path = null;
 
-    /** @var PathPoint */
-    protected $path;
-
-    public function __construct(PlayerHasEstomac $player)
+    public function __construct(private PlayerHasEstomac $player)
     {
-        $this->player = $player;
     }
 
-    public function update(World $world)
+    public function describe(): string
     {
-        if($this->path !== null && $this->path->isEnd())
-        {
-            $item = $world->getMap()->getItem($this->path->getDestination());
+        if (null === $this->path) {
+            return 'Manger : cherche une fleur';
+        }
 
-            if($item == MapBuilder::FLEUR)
-            {
-                $world->getLogger()->log(LogLevel::INFO, "le chat mange \x07");
+        return sprintf('Manger : va en %s', (string) $this->path->getDestination());
+    }
 
-                $this->player->getEstomac()->setNouriture($this->player->getEstomac()->getNouriture() + 10);
-
-                $world->getMap()->setItem($this->path->getDestination(), MapBuilder::HERBE);
-            }
-
+    public function update(World $world): void
+    {
+        if (null !== $this->path && $this->path->isEnd()) {
+            $this->eat($world);
             $this->path = null;
         }
 
-        if($this->path === null)
-        {
-            $founds = $world->getMap()->findItems(
-                $this->player->getPosition(),
-                MapBuilder::FLEUR,
-                'map'
-            );
+        $this->path ??= $this->findFood($world);
 
-            if(!empty($founds))
-            {
-                $newPoint = $founds[0]['point'];
-
-                $world->getLogger()->log(LogLevel::INFO, "[flower] le chat part vers le point ".((string) $newPoint), [
-                    "pid" => $this->player->getIdentifiant(),
-                ]);
-
-                $this->path = new PathPoint($this->player, $newPoint);
-            }
-        }
-
-        if($this->path !== null)
-        {
-            $world->getLogger()->log(
-                LogLevel::INFO,
-                sprintf(
-                    'le chat recherche la nourriture (target => %s , %s )',
-                        $this->path->getDestination()->getX(),
-                        $this->path->getDestination()->getY()
-                )
-            );
-
-            $this->path->update($world);
-        }
-        else
-        {
+        if (null === $this->path) {
             $world->getLogger()->log(LogLevel::INFO, "le chat n'a plus de nourriture");
+
+            return;
         }
+
+        $world->getLogger()->log(LogLevel::INFO, sprintf(
+            'le chat recherche la nourriture (target => %s)',
+            (string) $this->path->getDestination()
+        ));
+
+        $this->path->update($world);
+    }
+
+    private function eat(World $world): void
+    {
+        $destination = $this->path?->getDestination();
+
+        if (null === $destination || MapBuilder::FLEUR !== $world->getMap()->getItem($destination)) {
+            return;
+        }
+
+        $world->getLogger()->log(LogLevel::INFO, 'le chat mange');
+
+        $this->player->getEstomac()->setNouriture(
+            $this->player->getEstomac()->getNouriture() + self::NOURISHMENT
+        );
+
+        $world->getMap()->setItem($destination, MapBuilder::HERBE);
+    }
+
+    private function findFood(World $world): ?PathPoint
+    {
+        $founds = $world->getMap()->findItems($this->player->getPosition(), MapBuilder::FLEUR);
+
+        if ([] === $founds) {
+            return null;
+        }
+
+        $destination = $founds[0]['point'];
+
+        $world->getLogger()->log(
+            LogLevel::INFO,
+            '[flower] le chat part vers le point ' . (string) $destination,
+            ['pid' => $this->player->getIdentifiant()]
+        );
+
+        return new PathPoint($this->player, $destination);
     }
 }

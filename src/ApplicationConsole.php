@@ -1,30 +1,35 @@
 <?php
 
+declare(strict_types=1);
+
+use Command\ApplicationCommand;
 use Symfony\Component\Console\Application as BaseApplication;
+use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 
+/**
+ * Single command application: running ./console starts the game directly.
+ */
 class ApplicationConsole extends BaseApplication
 {
-    protected function getCommandName(InputInterface $input)
+    public function __construct()
     {
-        return "application";
+        parent::__construct('cat-ia');
+
+        $this->add(new ApplicationCommand());
+        $this->setDefaultCommand('application', true);
     }
 
-    protected function getDefaultCommands()
+    protected function getCommandName(InputInterface $input): ?string
     {
-        $defaultCommands = parent::getDefaultCommands();
-
-        $defaultCommands[] = new \Command\ApplicationCommand();
-
-        return $defaultCommands;
+        return 'application';
     }
 
-    public function getDefinition()
+    /**
+     * @return list<Command>
+     */
+    protected function getDefaultCommands(): array
     {
-        $inputDefinition = parent::getDefinition();
-
-        $inputDefinition->setArguments();
-
-        return $inputDefinition;
+        return array_values(parent::getDefaultCommands());
     }
 }

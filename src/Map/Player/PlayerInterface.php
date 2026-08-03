@@ -1,10 +1,6 @@
 <?php
-/**
- * Created by PhpStorm.
- * User: Freelance
- * Date: 24/12/2015
- * Time: 11:37
- */
+
+declare(strict_types=1);
 
 namespace Map\Player;
 
@@ -14,14 +10,13 @@ use Map\World\World;
 
 interface PlayerInterface
 {
-    public function move();
+    public function move(): void;
 
     public function getPosition(): Point;
 
-    /**
-     * @return IAInterface
-     */
-    public function getIa();
+    public function getIdentifiant(): string;
 
-    public function update(World $world);
+    public function getIa(): IAInterface;
+
+    public function update(World $world): void;
 }

@@ -1,266 +1,429 @@
 <?php
 
-/**
- * Created by PhpStorm.
- * User: Freelance
- * Date: 24/12/2015
- * Time: 10:24
- */
+declare(strict_types=1);
 
 namespace GameRunner;
 
+use InputController\InputControllerInterface;
+use InputController\TerminalInputController;
 use Logger\FileLogger;
 use Logger\MultipleLogger;
 use Map\Builder\MapBuilder;
-use Map\Provider\RandomMapProvider;
 use Map\Player\Chat;
-use Map\Render\MapRenderInterface;
-use Map\Render\NCurseRender;
+use Map\Provider\FileMapProvider;
+use Map\Provider\MapProviderInterface;
+use Map\Provider\TerrainMapProvider;
+use Map\Render\TuiRender;
 use Map\World\World;
 use Map\World\WorldContainer;
 use Memory\MemoryManager;
-use Psr\Log\LoggerInterface;
+use PhpTui\Term\Terminal;
 use Psr\Log\LogLevel;
+use Runtime\MemoryUsage;
+use Runtime\TimeControl;
 use Snapshot\Instant;
-use Symfony\Component\Console\Input\InputInterface;
 
 class GameRunner
 {
-    const UPDATE_NORMAL = 1;
-    const UPDATE_NONE = 2;
-    const UPDATE_SLOW = 3;
-    const UPDATE_STEP_BY_STEP = 4;
+    /** How long the loop sleeps while it has nothing to compute. */
+    private const IDLE_DELAY = 20_000;
 
-    private $quit = false;
+    /** Ticks between two memory readings written to the log. */
+    private const MEMORY_CHECK_EVERY = 50;
 
-    private $timeMachineMode = false;
-    private $runMode = self::UPDATE_STEP_BY_STEP;
-    private $size;
+    /**
+     * Ticks between two snapshots while the simulation runs on its own.
+     *
+     * Snapshotting every tick at full speed means serializing the whole world
+     * a hundred times a second — a lot of allocation churn for a ring that
+     * would then only hold a tenth of a second of history.
+     */
+    private const SNAPSHOT_EVERY = 5;
 
-    private $flashName = 'game';
+    private bool $quit = false;
 
-    public function configure(array $options)
-    {
-        $this->size = exec('tput lines')."x".exec('tput cols');
-    }
+    private bool $stepRequested = false;
 
-    public function execute()
-    {
+    private ?string $mapFile = null;
 
-            list($line, $colonne) = explode("x", $this->size);
+    private string $flashName = 'game';
 
-            $logger = new MultipleLogger();
-            $logger->addLogger(new FileLogger("/tmp/log/dev.log"));
-            $worldContainer = new WorldContainer();
-            $memoryManager = new MemoryManager();
-            $mapRender = new NCurseRender($line, $colonne, $logger, $worldContainer, $memoryManager);
-            $memoryManager->setId($this->flashName);
+    /** Set to replay the exact same terrain across runs. */
+    private ?int $seed = null;
 
-            $world = $this->createWorld($mapRender, $logger);
-            $worldContainer->setWorld($world);
+    private MultipleLogger $logger;
 
-            $mapRender->init();
+    private WorldContainer $worldContainer;
 
-            $this->render($mapRender, $world);
+    private MemoryManager $memoryManager;
 
-            while(1) {
+    private TimeControl $timeControl;
 
-                $world->getInputController()->update();
+    private MemoryUsage $memoryUsage;
 
-                if ($this->runMode == self::UPDATE_STEP_BY_STEP) {
-                    $memoryManager->getFlashMemory()->addInstant(
-                        new Instant($world)
-                    );
+    private TuiRender $render;
 
-                    $world->getLogger()->info(sprintf(
-                        'nombre instantané : %d',
-                        $memoryManager->getFlashMemory()->count()
-                    ));
+    private InputControllerInterface $input;
 
-                    while ($world->getInputController()->getKey() != 'n') {
-                        $world->getInputController()->update();
-                        usleep(200);
+    private World $world;
 
-                        $world = $this->bindController(
-                            $world,
-                            $worldContainer,
-                            $memoryManager,
-                            $logger,
-                            $mapRender
-                        );
-
-                    }
-                }
-
-                if ($this->runMode == self::UPDATE_SLOW) {
-                    usleep(200);
-                    $this->bindController(
-                        $world,
-                        $worldContainer,
-                        $memoryManager,
-                        $logger,
-                        $mapRender
-                    );
-                }
-                if ($this->update($world)) {
-                    $this->render($mapRender, $world);
-                }
-            }
-    }
-
-    protected function bindController(World $world, WorldContainer $worldContainer, MemoryManager $memoryManager, LoggerInterface $logger, MapRenderInterface $mapRender): World
-    {
-        if($world->getInputController()->getKey() == "x")
-        {
-            $hash = $memoryManager->persist();
-            $logger->log(LogLevel::INFO, 'persist snapshop memory on hash '.$hash);
-
-            $this->render($mapRender, $world);
-        }
-
-        if($world->getInputController()->getKey() == "r")
-        {
-            $logger->log(LogLevel::INFO, 'soft reload game');
-            $world = $this->createWorld(
-                $mapRender,
-                $logger
-            );
-
-            $this->render($mapRender, $world);
-        }
-
-        if($world->getInputController()->getKey() == "q")
-        {
-            exit(0);
-        }
-
-        if($world->getInputController()->getKey() == "t")
-        {
-            if ($this->timeMachineMode) {
-                $this->timeMachineMode = false;
-                $logger->info('mode timemachine désactivé');
-            } else {
-                $this->timeMachineMode = true;
-                $logger->info('mode timemachine activé');
-            }
-
-            $this->render($mapRender, $world);
-        }
-
-        if($world->getInputController()->getKey() == "s")
-        {
-            $this->runMode = self::UPDATE_SLOW;
-            $logger->info('change mode = slow');
-            $this->render($mapRender, $world);
-        }
-
-        if($world->getInputController()->getKey() == "b")
-        {
-            $this->runMode = self::UPDATE_STEP_BY_STEP;
-            $logger->info('change mode = step by step');
-            $this->render($mapRender, $world);
-        }
-
-        if ($this->timeMachineMode) {
-            if($world->getInputController()->getKey() == "p")
-            {
-                if ($instant = $memoryManager->getFlashMemory()->previous()) {
-                    /** @var World $world */
-                    $world = $instant->getData();
-
-                    $worldContainer->setWorld($world);
-                    $world->setLogger($logger);
-                } else {
-                    $logger->error('unabled to previous time machine');
-                }
-
-                $this->render($mapRender, $world);
-            }
-            if($world->getInputController()->getKey() == "a")
-            {
-                if ($instant = $memoryManager->getFlashMemory()->after()) {
-                    /** @var World $world */
-                    $world = $instant->getData();
-
-                    $worldContainer->setWorld($world);
-                    $world->setLogger($logger);
-                } else {
-                    $logger->error('unabled to after time machine');
-                }
-
-                $this->render($mapRender, $world);
-            }
-        }
-
-        return $world;
-    }
-
-
-    protected function addChat($x, $y, $speed = 1)
-    {
-        $chat = new Chat();
-        // $chat->getPosition()->setDirection(new Direction(1, 0));
-
-        $chat->getPosition()->setX($x);
-
-        $chat->getPosition()->setY($y);
-
-       // $chat->getPosition()->setSpeed($speed);
-
-        return $chat;
-    }
-
-    public function update(World $world) {
-        if ($this->timeMachineMode) {
-            return true;
-        }
-
-        return $world->update();
-    }
-
-    public function render(MapRenderInterface $mapRender, World $world)
-    {
-        $players = $world->getPlayerCollection();
-
-        $world->getMap()->clearLayer('player');
-
-        foreach($players as $player)
-        {
-            $world->getMap()->setItem($player->getPosition(), "P", 'player');
-        }
-
-        $world->getMap()->updateFinalLayer();
-        $mapRender->render($world->getMap()->getFinalMap());
-
-        $mapRender->clear($world->getMap()->getFinalMap());
+    public function __construct(
+        private ?Terminal $terminal = null,
+        private string $logFile = '/tmp/log/dev.log',
+    ) {
+        $this->terminal ??= Terminal::new();
+        $this->timeControl = new TimeControl();
+        $this->memoryUsage = new MemoryUsage();
     }
 
     /**
-     * @param InputInterface $input
-     * @param $mapRender
-     * @param MultipleLogger $logger
-     * @return World
+     * @param array<string, mixed> $options
      */
-    protected function createWorld(MapRenderInterface $mapRender, MultipleLogger $logger): World
+    public function configure(array $options = []): void
     {
-        $sizeMap = $mapRender->getSize();
+        if (!empty($options['map'])) {
+            $this->mapFile = (string) $options['map'];
+        }
 
-        $mapProvider = new RandomMapProvider($sizeMap["y"], $sizeMap["x"]);
+        if (!empty($options['flash-name'])) {
+            $this->flashName = (string) $options['flash-name'];
+        }
 
-        $map = new MapBuilder($mapProvider->getMap(), $logger);
+        if (isset($options['seed']) && '' !== $options['seed']) {
+            $this->seed = (int) $options['seed'];
+        }
 
-        $world = new World($map, array(
-            $this->addChat(5, 5, 1),
-            $this->addChat(60, 15, 2)
-        ), $logger);
-
-        return $world;
+        if (!empty($options['play'])) {
+            $this->timeControl->play();
+        }
     }
 
-    public function __destruct()
+    public function execute(): int
     {
-        if(extension_loaded("ncurses")) {
-            ncurses_end();
+        $this->logger = new MultipleLogger();
+        $this->logger->addLogger(new FileLogger($this->logFile));
+
+        $this->worldContainer = new WorldContainer();
+        $this->memoryManager = new MemoryManager($this->flashName);
+        $this->input = new TerminalInputController($this->terminal);
+
+        $this->render = new TuiRender(
+            $this->terminal,
+            $this->logger,
+            $this->worldContainer,
+            $this->memoryManager,
+            $this->timeControl
+        );
+
+        try {
+            $this->render->init();
+            $this->setWorld($this->createWorld());
+            $this->draw();
+
+            while (!$this->quit) {
+                $this->pumpInput();
+
+                if ($this->quit) {
+                    break;
+                }
+
+                if (!$this->advance()) {
+                    usleep(self::IDLE_DELAY);
+                }
+            }
+        } finally {
+            $this->render->close();
         }
+
+        return 0;
+    }
+
+    /**
+     * Run one iteration of the simulation if the current time state allows it.
+     * Returns false when the loop should just idle.
+     */
+    private function advance(): bool
+    {
+        // Browsing the past: the world on screen is a restored snapshot, so
+        // nothing must be computed until the user leaves the time machine.
+        if ($this->timeControl->isTimeMachine()) {
+            return false;
+        }
+
+        if ($this->timeControl->isPaused() && !$this->stepRequested) {
+            return false;
+        }
+
+        $this->stepRequested = false;
+        $this->snapshot();
+
+        if ($this->world->update()) {
+            $this->checkMemory();
+            $this->draw();
+        }
+
+        if (!$this->timeControl->isPaused()) {
+            usleep($this->timeControl->delay());
+        }
+
+        return true;
+    }
+
+    private function pumpInput(): void
+    {
+        $this->input->update();
+
+        $key = $this->input->getKey();
+
+        if (null === $key) {
+            return;
+        }
+
+        $redraw = match ($key) {
+            'q' => $this->quit(),
+            ' ' => $this->togglePause(),
+            'n' => $this->requestStep(),
+            '+', '=' => $this->changeSpeed(faster: true),
+            '-' => $this->changeSpeed(faster: false),
+            't' => $this->toggleTimeMachine(),
+            'p' => $this->travel(-1),
+            'a' => $this->travel(1),
+            'x' => $this->persist(),
+            'r' => $this->reload(),
+            "\t" => $this->nextTab(),
+            // Historic bindings, kept so the old muscle memory still works.
+            'b' => $this->togglePause(true),
+            's' => $this->togglePause(false),
+            default => $this->selectTab($key),
+        };
+
+        if ($redraw) {
+            $this->draw();
+        }
+    }
+
+    private function quit(): bool
+    {
+        $this->quit = true;
+
+        return false;
+    }
+
+    private function togglePause(?bool $paused = null): bool
+    {
+        match ($paused) {
+            true => $this->timeControl->pause(),
+            false => $this->timeControl->play(),
+            null => $this->timeControl->togglePause(),
+        };
+
+        return true;
+    }
+
+    private function requestStep(): bool
+    {
+        $this->stepRequested = true;
+
+        return false;
+    }
+
+    private function changeSpeed(bool $faster): bool
+    {
+        $faster ? $this->timeControl->faster() : $this->timeControl->slower();
+
+        return true;
+    }
+
+    private function nextTab(): bool
+    {
+        $this->render->nextTab();
+
+        return true;
+    }
+
+    private function selectTab(string $key): bool
+    {
+        if (1 !== preg_match('/^[1-9]$/', $key)) {
+            return false;
+        }
+
+        $this->render->selectTab((int) $key - 1);
+
+        return true;
+    }
+
+    private function persist(): bool
+    {
+        $path = $this->memoryManager->persist();
+        $this->logger->log(LogLevel::INFO, 'memoire persistee dans ' . $path);
+
+        return true;
+    }
+
+    private function reload(): bool
+    {
+        $this->logger->log(LogLevel::INFO, 'soft reload game');
+        $this->setWorld($this->createWorld());
+
+        return true;
+    }
+
+    private function toggleTimeMachine(): bool
+    {
+        $this->timeControl->toggleTimeMachine();
+        $this->logger->log(
+            LogLevel::INFO,
+            'mode timemachine ' . ($this->timeControl->isTimeMachine() ? 'active' : 'desactive')
+        );
+
+        return true;
+    }
+
+    private function travel(int $offset): bool
+    {
+        if (!$this->timeControl->isTimeMachine()) {
+            return false;
+        }
+
+        $memory = $this->memoryManager->getFlashMemory();
+        $instant = $offset < 0 ? $memory->previous() : $memory->after();
+
+        if (null === $instant) {
+            $this->logger->log(LogLevel::ERROR, 'aucun instant dans cette direction');
+
+            return true;
+        }
+
+        $world = $instant->getData();
+
+        if (!$world instanceof World) {
+            $this->logger->log(LogLevel::ERROR, 'instant corrompu');
+
+            return true;
+        }
+
+        $this->setWorld($world);
+
+        return true;
+    }
+
+    /**
+     * Freeze the current world. Every step is worth keeping when the user
+     * drives them one by one; while playing, one every few ticks is enough.
+     */
+    private function snapshot(): void
+    {
+        if (!$this->timeControl->isPaused()
+            && !$this->world->getTimer()->isTime(self::SNAPSHOT_EVERY)
+        ) {
+            return;
+        }
+
+        $this->memoryManager->getFlashMemory()->addInstant(new Instant($this->world));
+    }
+
+    /**
+     * A cgroup kill (exit 137) gives no stack trace and no PHP error, so the
+     * only way to know what happened is to have written it down beforehand.
+     * The log file is opened in append mode and flushed per line, so the last
+     * warning survives the SIGKILL.
+     */
+    private function checkMemory(): void
+    {
+        if (!$this->world->getTimer()->isTime(self::MEMORY_CHECK_EVERY)) {
+            return;
+        }
+
+        $container = $this->memoryUsage->containerCurrent();
+        $ratios = [
+            'php' => MemoryUsage::ratio($this->memoryUsage->phpCurrent(), $this->memoryUsage->phpLimit()),
+            'conteneur' => MemoryUsage::ratio($container, $this->memoryUsage->containerLimit()),
+        ];
+
+        $message = sprintf(
+            '[MEMOIRE] php %s/%s, conteneur %s/%s, snapshots %s en %d instants',
+            MemoryUsage::format($this->memoryUsage->phpCurrent()),
+            MemoryUsage::format($this->memoryUsage->phpLimit()),
+            MemoryUsage::format($container),
+            MemoryUsage::format($this->memoryUsage->containerLimit()),
+            MemoryUsage::format($this->memoryManager->getFlashMemory()->bytes()),
+            $this->memoryManager->getFlashMemory()->count(),
+        );
+
+        foreach ($ratios as $what => $ratio) {
+            if (null !== $ratio && $ratio >= MemoryUsage::DANGER_RATIO) {
+                $this->logger->log(LogLevel::WARNING, sprintf(
+                    '%s (%s a %d%% de sa limite)',
+                    $message,
+                    $what,
+                    (int) round($ratio * 100)
+                ));
+
+                return;
+            }
+        }
+
+        $this->logger->log(LogLevel::INFO, $message);
+    }
+
+    private function draw(): void
+    {
+        $map = $this->world->getMap();
+
+        $map->clearLayer(MapBuilder::LAYER_PLAYER);
+
+        foreach ($this->world->getPlayerCollection() as $player) {
+            $map->setItem($player->getPosition(), 'P', MapBuilder::LAYER_PLAYER);
+        }
+
+        $map->updateFinalLayer();
+
+        $this->render->render($map->getFinalMap());
+    }
+
+    /**
+     * A world coming back from a snapshot carries no services: it gets the
+     * live logger and input controller re-attached here.
+     */
+    private function setWorld(World $world): void
+    {
+        $this->world = $world;
+        $this->world->setLogger($this->logger);
+        $this->world->setInputController($this->input);
+        $this->worldContainer->setWorld($world);
+    }
+
+    private function createWorld(): World
+    {
+        $size = $this->render->getSize();
+        $map = new MapBuilder($this->mapProvider($size['y'], $size['x'])->getMap(), $this->logger);
+
+        return new World(
+            $map,
+            [
+                $this->createChat(5, 5),
+                $this->createChat((int) ($size['x'] / 2), (int) ($size['y'] / 2)),
+            ],
+            $this->logger,
+            $this->input
+        );
+    }
+
+    private function mapProvider(int $lines, int $columns): MapProviderInterface
+    {
+        if (null !== $this->mapFile) {
+            return new FileMapProvider($this->mapFile);
+        }
+
+        return new TerrainMapProvider($lines, $columns, $this->seed);
+    }
+
+    private function createChat(int $x, int $y): Chat
+    {
+        $chat = new Chat();
+        $chat->getPosition()->setX($x);
+        $chat->getPosition()->setY($y);
+
+        return $chat;
     }
 }

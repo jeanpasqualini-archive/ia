@@ -1,19 +1,12 @@
 <?php
-/**
- * Created by PhpStorm.
- * User: darkilliant
- * Date: 29/12/15
- * Time: 17:11
- */
+
+declare(strict_types=1);
 
 namespace Map\Player;
 
 use Map\Player\Chat\Estomac;
 
-interface PlayerHasEstomac {
-
-    /**
-     * @return Estomac
-     */
-    public function getEstomac();
+interface PlayerHasEstomac extends PlayerInterface
+{
+    public function getEstomac(): Estomac;
 }

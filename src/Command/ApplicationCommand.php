@@ -1,60 +1,47 @@
 <?php
-/**
- * Created by PhpStorm.
- * User: Freelance
- * Date: 24/12/2015
- * Time: 10:24
- */
+
+declare(strict_types=1);
 
 namespace Command;
 
-
 use GameRunner\GameRunner;
-use Map\Render\NCurseRender;
+use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
+use Throwable;
 
+#[AsCommand(name: 'application', description: 'Lance la simulation dans le terminal')]
 class ApplicationCommand extends Command
 {
-    const UPDATE_NORMAL = 1;
-    const UPDATE_NONE = 2;
-    const UPDATE_SLOW = 3;
-
-    private $timeMachineMode = false;
-    private $updateMode = self::UPDATE_NONE;
-
-    public function configure()
+    protected function configure(): void
     {
-        $this->setName("application");
-        $this->addOption("curse", null, InputOption::VALUE_NONE, "active curse");
-        $this->addOption("step-by-step", null, InputOption::VALUE_NONE, "step by step");
-        $this->addOption("size", null, InputOption::VALUE_REQUIRED, "taille", exec('tput lines')."x".exec('tput cols'));
-        $this->addOption("load-dump", null, InputOption::VALUE_REQUIRED, "memory load dump");
-        $this->addOption("map", null, InputOption::VALUE_REQUIRED, "file");
-        $this->addOption('flash-name', null, InputOption::VALUE_REQUIRED, 'flash-name', 'game');
+        $this
+            ->addOption('play', null, InputOption::VALUE_NONE, 'demarre en lecture au lieu de demarrer en pause')
+            ->addOption('map', null, InputOption::VALUE_REQUIRED, 'charge une map depuis un fichier')
+            ->addOption('seed', null, InputOption::VALUE_REQUIRED, 'graine du terrain, pour rejouer la meme carte')
+            ->addOption('flash-name', null, InputOption::VALUE_REQUIRED, 'nom du dump memoire', 'game')
+            ->addOption('log', null, InputOption::VALUE_REQUIRED, 'fichier de log', '/tmp/log/dev.log');
     }
 
-    protected function execute(InputInterface $input, OutputInterface $output)
+    protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        mb_internal_encoding('UTF-8');
-
+        $runner = new GameRunner(logFile: (string) $input->getOption('log'));
 
         try {
-            $runner = new GameRunner();
             $runner->configure($input->getOptions());
-            $runner->execute();
-        }
-        catch(\Throwable $e)
-        {
-            unset($runner);
-            $symfonyStyle = new SymfonyStyle($input, $output);
-            $symfonyStyle->error($e->getMessage());
-            $symfonyStyle->comment($e->getTraceAsString());
 
-            return;
+            return $runner->execute();
+        } catch (Throwable $e) {
+            // The renderer restores the terminal in its own finally block, so
+            // the error is readable on the normal screen.
+            $style = new SymfonyStyle($input, $output);
+            $style->error($e->getMessage());
+            $style->comment($e->getTraceAsString());
+
+            return Command::FAILURE;
         }
     }
 }

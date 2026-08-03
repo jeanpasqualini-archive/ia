@@ -1,141 +1,138 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Map\Builder;
+
 use Logger\MultipleLogger;
 use Map\Location\Point;
-use Map\Player\Player;
 
 /**
- * Created by PhpStorm.
- * User: Freelance
- * Date: 24/12/2015
- * Time: 10:53
+ * The map itself: a stack of named layers of single-character tiles, flattened
+ * into a final layer the renderers consume.
  */
 class MapBuilder
 {
-    protected $layers;
+    public const HERBE = 'X';
+    public const ARBRE = 'Y';
+    public const EAU = 'E';
+    public const FLEUR = 'F';
 
-    private $finalLayer = [];
+    public const LAYER_MAP = 'map';
+    public const LAYER_PLAYER = 'player';
 
-    const HERBE = "X";
-    const ARBRE = "Y";
-    const EAU = "E";
-    const FLEUR = "F";
+    /** @var list<string> */
+    private const ALLOWED_ITEMS = [self::HERBE, self::ARBRE, self::EAU, self::FLEUR];
 
-    protected static $allowedItems = array(
-        self::HERBE,
-        self::ARBRE,
-        self::EAU,
-        self::FLEUR
-    );
+    /** @var array<string, array<int, array<int, string>>> */
+    private array $layers = [];
 
-    /** @var int[] */
-    private $positionLayers = [
-        'map' => 1,
-        'player' => 2,
-    ];
+    /** @var array<int, array<int, string>> */
+    private array $finalLayer = [];
 
-    /** @var MultipleLogger */
-    private $logger;
-
-    public function __construct(array $map, MultipleLogger $logger)
+    /**
+     * @param list<string> $map
+     */
+    public function __construct(array $map, private ?MultipleLogger $logger = null)
     {
-        $this->layers['map'] = $this->transformRawMap($map);
-        $this->logger = $logger;
+        $this->layers[self::LAYER_MAP] = array_map(mb_str_split(...), $map);
+        $this->layers[self::LAYER_PLAYER] = [];
+        $this->updateFinalLayer();
     }
 
-    public static function getAllowedItems()
+    /**
+     * @return list<string>
+     */
+    public static function getAllowedItems(): array
     {
-        return self::$allowedItems;
+        return self::ALLOWED_ITEMS;
     }
 
-    public function findItems(Point $point, $item, $layer = 'map')
+    public function getWidth(): int
+    {
+        return count($this->layers[self::LAYER_MAP][0] ?? []);
+    }
+
+    public function getHeight(): int
+    {
+        return count($this->layers[self::LAYER_MAP]);
+    }
+
+    /**
+     * Keep a position inside the map. Nothing did this before, so a player
+     * walking to the edge kept going and later reads went out of bounds.
+     */
+    public function clamp(Point $point): void
+    {
+        $point->setX(max(0, min($this->getWidth() - 1, $point->getX())));
+        $point->setY(max(0, min($this->getHeight() - 1, $point->getY())));
+    }
+
+    public function contains(Point $point): bool
+    {
+        return isset($this->layers[self::LAYER_MAP][$point->getY()][$point->getX()]);
+    }
+
+    /**
+     * Every occurrence of $item, closest first.
+     *
+     * @return list<array{distance: int, point: Point}>
+     */
+    public function findItems(Point $point, string $item, string $layer = self::LAYER_MAP): array
     {
         $found = [];
 
-        foreach($this->layers[$layer] as $y => $line)
-        {
-            foreach($line as $x => $colonne)
-            {
-                if($this->layers[$layer][$y][$x] == $item)
-                {
-                    $found[] = [
-                        'distance' => abs($point->getX() - $x) + abs($point->getY() - $y),
-                        'point' => new Point($x, $y),
-                    ];
+        foreach ($this->layers[$layer] ?? [] as $y => $line) {
+            foreach ($line as $x => $tile) {
+                if ($tile !== $item) {
+                    continue;
                 }
+
+                $candidate = new Point($x, $y);
+                $found[] = ['distance' => $point->distanceTo($candidate), 'point' => $candidate];
             }
         }
 
-        usort($found, function($a, $b) {
-           if ($a['distance'] == $b['distance'])
-           {
-               return 0;
-           }
-
-           return ($a['distance'] < $b['distance']) ? -1 : 1;
-        });
+        usort($found, static fn (array $a, array $b): int => $a['distance'] <=> $b['distance']);
 
         return $found;
     }
 
-    public function getItem(Point $position, $layer = 'map')
+    public function getItem(Point $position, string $layer = self::LAYER_MAP): ?string
     {
-        return $this->layers[$layer][$position->getY()][$position->getX()];
+        return $this->layers[$layer][$position->getY()][$position->getX()] ?? null;
     }
 
-    public function crop($x, $y)
-    {
-        $this->layers = array_slice($this->layers, 0, $y);
-
-        foreach($this->layers as $line)
-        {
-            foreach($line as $colonne)
-            {
-                $this->layers[$y] = array_slice($this->layers[$y], 0, $x);
-            }
-        }
-    }
-
-    protected function transformRawMap($map)
-    {
-        $mapArray = array();
-
-        foreach($map as $line)
-        {
-            $mapArray[] = str_split($line);
-        }
-
-        return $mapArray;
-    }
-
-    public function setItem(Point $position, $item, $layer = 'map')
+    public function setItem(Point $position, string $item, string $layer = self::LAYER_MAP): void
     {
         $this->layers[$layer][$position->getY()][$position->getX()] = $item;
-
-        //$maximumVisible = max($this->positionLayers);
     }
 
-    public function clearLayer($layer)
+    public function clearLayer(string $layer): void
     {
         $this->layers[$layer] = [];
     }
 
-    public function updateFinalLayer()
+    /**
+     * Flatten the layers, lowest first, into the map handed to the renderer.
+     */
+    public function updateFinalLayer(): void
     {
-        foreach ($this->layers as $layer)
-        {
-            foreach($layer as $y => $line)
-            {
-                foreach($line as $x => $colonne)
-                {
-                    $this->finalLayer[$y][$x] = $layer[$y][$x];
+        $this->finalLayer = [];
+
+        foreach ($this->layers as $layer) {
+            foreach ($layer as $y => $line) {
+                foreach ($line as $x => $tile) {
+                    $this->finalLayer[$y][$x] = $tile;
                 }
             }
         }
     }
 
-    public function getFinalMap()
+    /**
+     * @return array<int, array<int, string>>
+     */
+    public function getFinalMap(): array
     {
         return $this->finalLayer;
     }

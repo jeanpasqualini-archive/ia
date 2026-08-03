@@ -1,36 +1,33 @@
 <?php
 
-namespace Map\Player;
-use Map\World\World;
-use Map\Location\Point;
+declare(strict_types=1);
 
-/**
- * Created by PhpStorm.
- * User: Freelance
- * Date: 24/12/2015
- * Time: 11:37
- */
+namespace Map\Player;
+
+use Map\Gun\GunInterface;
+use Map\Location\Point;
+use Map\World\World;
+use RuntimeException;
+
 abstract class Player implements PlayerInterface
 {
-    private static $generatorId = 0;
+    private static int $generatorId = 0;
 
-    const FOODS = ["burger", "salad", "tomato", "oignon"];
+    private const FOODS = ['burger', 'salad', 'tomato', 'oignon'];
 
-    private $identifiant;
+    protected string $identifiant;
 
-    protected $position;
+    protected Point $position;
 
-    protected $life = 10;
+    protected int $life = 10;
 
-    protected $resistance = 0;
+    protected int $resistance = 0;
 
-    protected $puissance = 1;
-
-    protected $eventDispatcher;
+    protected int $puissance = 1;
 
     public function __construct()
     {
-        $this->identifiant = self::FOODS[self::$generatorId];
+        $this->identifiant = self::FOODS[self::$generatorId % count(self::FOODS)];
         self::$generatorId++;
     }
 
@@ -39,49 +36,40 @@ abstract class Player implements PlayerInterface
         return $this->identifiant;
     }
 
-    public function getEventDispatcher()
-    {
-        return $this->eventDispatcher;
-    }
-
-    /**
-     * @return Point
-     */
     public function getPosition(): Point
     {
         return $this->position;
     }
 
-    public function getLife()
+    public function getLife(): int
     {
         return $this->life;
     }
 
-    public function setLife($life)
+    public function setLife(int $life): void
     {
         $this->life = $life;
     }
 
-    public function attackBy(\GunInterface $gun)
+    public function getPuissance(): int
     {
-        $this->setLife($this->getLife() - ($gun->getPuissance() - $this->getResistance()));
+        return $this->puissance;
     }
 
-    public function attack(Player $player)
-    {
-        $this->attackBy($this);
-    }
-
-    public function getResistance()
+    public function getResistance(): int
     {
         return $this->resistance;
     }
 
-    public function update(World $world)
+    public function attackBy(GunInterface $gun): void
     {
-        if($this->life <= 1)
-        {
-            throw new \Exception("you are dead");
+        $this->setLife($this->getLife() - ($gun->getPuissance() - $this->getResistance()));
+    }
+
+    public function update(World $world): void
+    {
+        if ($this->life <= 1) {
+            throw new RuntimeException(sprintf('%s est mort', $this->identifiant));
         }
     }
 }
