@@ -7,12 +7,26 @@ Le premier palier est la représentation des bas instincs :
  - Recherche de nouriture
  - Etc...
 
-Cette démonstration est visualisable en console et en mode web.
+La démonstration s'affiche en plein écran dans le terminal (php-tui, pas d'extension PHP à compiler).
 
-Pour la console nous vous conseillons d'installer l'extension php ncurses pour une meuilleur expérience car elle permet une meuilleur gestion de l'affichage.
+Lancer le jeu : make run
+Lancer les tests : make test
+Voir les logs  : make logs
+Autres cibles  : make help
 
-En console : ./console
-En mode web : ./web
+L'écran est découpé en trois : la carte, un panneau à droite avec un onglet par IA
+(estomac et objectifs en cours) plus la consommation mémoire en direct, et une
+barre de contrôle du temps en bas.
+
+Touches :
+ - `espace` lecture/pause, `n` avance d'un tick, `-`/`+` vitesse
+ - `t` time machine, puis `p`/`a` pour naviguer dans les snapshots
+ - `tab` ou `1`..`9` pour changer d'onglet IA
+ - `r` nouvelle map, `x` persiste la mémoire, `q` quitte
+
+Le terrain est généré par bruit fractal : lacs dans les creux, forêts sur les
+hauteurs, prairies et parterres de fleurs entre les deux. `--seed 42` rejoue
+exactement la même carte.
 
 Voici une capture
 
