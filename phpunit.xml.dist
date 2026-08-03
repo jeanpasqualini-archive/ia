@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd" bootstrap="vendor/autoload.php" colors="true" failOnWarning="true" failOnNotice="true" failOnDeprecation="true">
+  <testsuites>
+    <testsuite name="cat-ia">
+      <directory>tests</directory>
+    </testsuite>
+  </testsuites>
+  <!-- ignoreIndirectDeprecations: only our own code should fail the suite,
+       php-tui/term is not PHP 8.4 clean yet. -->
+  <source ignoreIndirectDeprecations="true">
+    <include>
+      <directory>src</directory>
+    </include>
+  </source>
+</phpunit>
