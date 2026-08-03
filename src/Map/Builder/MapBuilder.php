@@ -24,6 +24,19 @@ class MapBuilder
     /** @var list<string> */
     private const ALLOWED_ITEMS = [self::HERBE, self::ARBRE, self::EAU, self::FLEUR];
 
+    /**
+     * Cost of stepping onto a tile, null meaning impassable. Undergrowth is
+     * crossable but slow enough that a cat prefers to walk around a wood.
+     *
+     * @var array<string, int|null>
+     */
+    private const COSTS = [
+        self::HERBE => 1,
+        self::FLEUR => 1,
+        self::ARBRE => 3,
+        self::EAU => null,
+    ];
+
     /** @var array<string, array<int, array<int, string>>> */
     private array $layers = [];
 
@@ -71,6 +84,59 @@ class MapBuilder
     public function contains(Point $point): bool
     {
         return isset($this->layers[self::LAYER_MAP][$point->getY()][$point->getX()]);
+    }
+
+    /**
+     * Cost of stepping onto this tile, null when it cannot be walked on.
+     */
+    public function cost(Point $point): ?int
+    {
+        $tile = $this->getItem($point);
+
+        if (null === $tile) {
+            return null;
+        }
+
+        // array_key_exists, not ??: an impassable tile has a null cost, which
+        // ?? would happily replace with the default.
+        return array_key_exists($tile, self::COSTS) ? self::COSTS[$tile] : 1;
+    }
+
+    public function isWalkable(Point $point): bool
+    {
+        return null !== $this->cost($point);
+    }
+
+    /**
+     * Closest walkable tile around $point, searched outwards. Used to place
+     * players, so nobody spawns in the middle of a lake.
+     */
+    public function nearestWalkable(Point $point): Point
+    {
+        if ($this->isWalkable($point)) {
+            return $point;
+        }
+
+        $radius = max($this->getWidth(), $this->getHeight());
+
+        for ($ring = 1; $ring <= $radius; $ring++) {
+            for ($dy = -$ring; $dy <= $ring; $dy++) {
+                for ($dx = -$ring; $dx <= $ring; $dx++) {
+                    // Only the outline of the ring is new ground.
+                    if (abs($dx) !== $ring && abs($dy) !== $ring) {
+                        continue;
+                    }
+
+                    $candidate = new Point($point->getX() + $dx, $point->getY() + $dy);
+
+                    if ($this->isWalkable($candidate)) {
+                        return $candidate;
+                    }
+                }
+            }
+        }
+
+        return $point;
     }
 
     /**

@@ -14,12 +14,21 @@ class ApplicationIA implements IAInterface
     public function update(World $world): void
     {
         foreach ($world->getPlayerCollection() as $player) {
+            $position = $player->getPosition();
+            $before = [$position->getX(), $position->getY()];
+
             $player->getIa()->update($world);
             $player->update($world);
 
-            // Single authority on bounds: whatever moved the player (a goal,
-            // the keyboard, a stale direction), it cannot leave the map.
-            $world->getMap()->clamp($player->getPosition());
+            // Single authority on where a player may stand: whatever moved it
+            // (a route, the keyboard, a stale direction), it cannot leave the
+            // map nor end up in the water.
+            $world->getMap()->clamp($position);
+
+            if (!$world->getMap()->isWalkable($position)) {
+                $position->setX($before[0]);
+                $position->setY($before[1]);
+            }
         }
     }
 }

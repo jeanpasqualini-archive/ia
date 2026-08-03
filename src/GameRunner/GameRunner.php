@@ -9,6 +9,7 @@ use InputController\TerminalInputController;
 use Logger\FileLogger;
 use Logger\MultipleLogger;
 use Map\Builder\MapBuilder;
+use Map\Location\Point;
 use Map\Player\Chat;
 use Map\Provider\FileMapProvider;
 use Map\Provider\MapProviderInterface;
@@ -401,8 +402,8 @@ class GameRunner
         return new World(
             $map,
             [
-                $this->createChat(5, 5),
-                $this->createChat((int) ($size['x'] / 2), (int) ($size['y'] / 2)),
+                $this->createChat($map, 5, 5),
+                $this->createChat($map, (int) ($size['x'] / 2), (int) ($size['y'] / 2)),
             ],
             $this->logger,
             $this->input
@@ -418,11 +419,15 @@ class GameRunner
         return new TerrainMapProvider($lines, $columns, $this->seed);
     }
 
-    private function createChat(int $x, int $y): Chat
+    private function createChat(MapBuilder $map, int $x, int $y): Chat
     {
+        // Now that water blocks movement, a cat dropped on a lake would be
+        // stuck there for good.
+        $spawn = $map->nearestWalkable(new Point($x, $y));
+
         $chat = new Chat();
-        $chat->getPosition()->setX($x);
-        $chat->getPosition()->setY($y);
+        $chat->getPosition()->setX($spawn->getX());
+        $chat->getPosition()->setY($spawn->getY());
 
         return $chat;
     }

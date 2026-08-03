@@ -52,7 +52,17 @@ Entry: `console` → `ApplicationConsole` (single-command Symfony app) → `Comm
 
 **World is the simulated state.** Map, players, timer, and the per-player AI. Services are injected and explicitly excluded from `__sleep`. Input is drained by the loop, never by `World` — both draining the same event stream would make each miss half the key presses.
 
-**AI is per-player and event-driven.** `ApplicationIA` walks every player, calls its AI, then its `update()`, then clamps its position to the map (single authority on bounds). `Estomac` emits `HungryEvent`/`FullEvent` each tick; `CatIA` turns hungry into a `Manger` goal and drops all goals when full. `Manger` finds the nearest `FLEUR` (Manhattan, `MapBuilder::findItems`), walks a `PathPoint` one step per tick, and on arrival converts the flower to `HERBE` and refills the stomach. **Goals own movement while active**; the free-roam `move()` (keyboard direction) only runs when there is no goal. Add a behaviour by writing an `ObjectifInterface` under `src/IA/Objectif/` and subscribing it to an event in the AI class.
+**AI is per-player and event-driven.** `ApplicationIA` walks every player, calls its AI, then its `update()`, then enforces where it may stand — clamped to the map and reverted if it landed on an impassable tile. That is the single authority on position, whatever moved the player. `Estomac` emits `HungryEvent`/`FullEvent` each tick; `CatIA` turns hungry into a `Manger` goal and drops all goals when full. **Goals own movement while active**; the free-roam `move()` (keyboard direction) only runs when there is no goal. Add a behaviour by writing an `ObjectifInterface` under `src/IA/Objectif/` and subscribing it to an event in the AI class.
+
+### Pathfinding
+
+`MapBuilder::cost()` gives each tile a walking cost — grass and flowers 1, undergrowth 3, water impassable (`null`). Read it with `array_key_exists`, never `??`: an impassable tile has a *null* cost, which `??` would silently replace with the default.
+
+`PathFinder` is a uniform cost search. Finding the closest flower and routing to it is one problem, so it is one flood: expand by cost until a tile matches. That beats running A* once per candidate flower, and it answers "the nearest one I can reach" rather than "the nearest as the crow flies" — rarely the same tile now that lakes block movement.
+
+Diagonal steps cost 14 against 10 for straight ones. Charged equally, a sideways detour ties with the straight line and the cat wanders for no reason. A diagonal also may not slip between two touching lakes.
+
+`Manger` holds a `Route` — a precomputed list of tiles walked one per tick — and re-routes when it ends. A route re-checks each tile before stepping on it, because the map changes underneath: another cat may have eaten the target flower. Players are spawned through `MapBuilder::nearestWalkable()`, otherwise a cat dropped on a lake is stuck for good.
 
 **Map is layered.** `MapBuilder` holds named layers (`map`, `player`) flattened into a final layer; renderers only see `getFinalMap()`. Tiles are single chars: `X` grass, `Y` tree, `E` water, `F` flower. Providers implement `MapProviderInterface`: `TerrainMapProvider` and `FileMapProvider` (`app/map/terre.txt`, mapping `░✿↟∼` back to `XFYE`).
 
@@ -64,7 +74,7 @@ The cuts are **quantiles, not fixed thresholds**. Asking for "the lowest 18%" yi
 
 Generation is seeded through `Random\Randomizer` (no global `mt_srand`), so `--seed N` replays a map exactly and the tests can assert on shapes. Coherence itself is tested by measuring clustering — the fraction of water tiles touching another water tile — against the same tiles shuffled.
 
-Terrain is decoration for now: nothing blocks movement, so a cat can stand in the middle of a lake.
+Terrain drives movement: see Pathfinding below.
 
 **Time machine = serialization.** `Snapshot\Instant` serializes a `World`; `FlashMemory` keeps a ring of 10 with a read cursor. Restoring swaps the live world and re-injects logger and input controller (`GameRunner::setWorld`).
 
