@@ -44,11 +44,9 @@ class Manger implements ObjectifInterface
             return 'Manger : cherche une fleur';
         }
 
-        return sprintf(
-            'Manger : va en %s (%d cases)',
-            (string) $destination,
-            $this->route?->remaining() ?? 0
-        );
+        // Kept short: the panel is barely thirty columns and a wrapped goal
+        // is harder to read than a terse one.
+        return sprintf('Manger -> %s (%d)', (string) $destination, $this->route?->remaining() ?? 0);
     }
 
     public function update(World $world): void

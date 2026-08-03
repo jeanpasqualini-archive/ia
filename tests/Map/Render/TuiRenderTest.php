@@ -56,9 +56,11 @@ final class TuiRenderTest extends TestCase
 
     public function testThePlayerGlyphIsDrawnOverTheGround(): void
     {
-        $this->render()->render([['X', 'P']]);
+        $this->render()->render([['X', '1'], ['X', '2']]);
 
-        self::assertStringContainsString('■', $this->backend->toString());
+        $frame = $this->backend->toString();
+        self::assertStringContainsString('●', $frame, 'le premier chat');
+        self::assertStringContainsString('◆', $frame, 'le second, distinct du premier');
     }
 
     public function testTheControlBarShowsTheTimeState(): void
@@ -122,7 +124,8 @@ final class TuiRenderTest extends TestCase
         $this->render(container: $container)->render([['X']]);
         $frame = $this->backend->toString();
 
-        self::assertStringContainsString('Estomac', $frame);
+        self::assertStringContainsString('🍽', $frame, 'estomac');
+        self::assertStringContainsString('🐈', $frame, 'emoji du chat dans le panneau');
         self::assertStringContainsString('Objectifs', $frame);
         self::assertStringContainsString('Manger', $frame, 'l objectif en cours est decrit');
         self::assertStringContainsString('0/10', $frame, "l'estomac est vide");

@@ -42,8 +42,24 @@ class TilePalette
     private const BLOOMS = ['#e8619d', '#f2d13c', '#e05c5c', '#d98cf0'];
 
     private const FOREST_GLYPH = '#74a862';
-    private const PLAYER_BG = '#c0392b';
-    private const PLAYER_FG = '#ffffff';
+
+    /**
+     * One glyph and one colour per player.
+     *
+     * Single column characters on purpose: an emoji is two columns wide, so on
+     * a grid of one-column tiles it would eat its neighbour and shift the rest
+     * of the row. Cats get emoji in the side panel instead, where text flows.
+     *
+     * @var list<array{glyph: string, color: string}>
+     */
+    private const PLAYERS = [
+        ['glyph' => '●', 'color' => '#ff5c5c'],
+        ['glyph' => '◆', 'color' => '#ffd24a'],
+        ['glyph' => '▲', 'color' => '#6ec1ff'],
+        ['glyph' => '★', 'color' => '#d98cf0'],
+    ];
+
+    private const PLAYER_BG = '#20201c';
 
     /** @var array<string, Style> */
     private array $cache = [];
@@ -63,13 +79,36 @@ class TilePalette
 
     public function glyph(string $tile): string
     {
+        $player = self::playerIndex($tile);
+
+        if (null !== $player) {
+            return self::PLAYERS[$player % count(self::PLAYERS)]['glyph'];
+        }
+
         return match ($tile) {
             MapBuilder::HERBE, MapBuilder::EAU => ' ',
             MapBuilder::ARBRE => '♣',
             MapBuilder::FLEUR => '✿',
-            'P' => '■',
             default => $tile,
         };
+    }
+
+    /**
+     * Players are stamped on their own layer as 1..9, so each one keeps its
+     * own colour instead of every cat being an identical letter.
+     */
+    public static function playerIndex(string $tile): ?int
+    {
+        return 1 === preg_match('/^[1-9]$/', $tile) ? (int) $tile - 1 : null;
+    }
+
+    /**
+     * Emoji identifying a player, for the side panel where text flows and a
+     * double width character costs nothing.
+     */
+    public static function playerEmoji(int $index): string
+    {
+        return ['🐈', '🐱', '🐯', '🦊'][$index % 4];
     }
 
     public function style(string $tile, int $x, int $y): Style
@@ -93,11 +132,21 @@ class TilePalette
             MapBuilder::FLEUR => Style::default()
                 ->bg($this->shade(MapBuilder::HERBE, $variant))
                 ->fg(RgbColor::fromHex(self::BLOOMS[$variant])),
-            'P' => Style::default()
-                ->bg(RgbColor::fromHex(self::PLAYER_BG))
-                ->fg(RgbColor::fromHex(self::PLAYER_FG)),
-            default => Style::default(),
+            default => $this->playerStyle($tile) ?? Style::default(),
         };
+    }
+
+    private function playerStyle(string $tile): ?Style
+    {
+        $index = self::playerIndex($tile);
+
+        if (null === $index) {
+            return null;
+        }
+
+        return Style::default()
+            ->bg(RgbColor::fromHex(self::PLAYER_BG))
+            ->fg(RgbColor::fromHex(self::PLAYERS[$index % count(self::PLAYERS)]['color']));
     }
 
     private function ansi(string $tile): Style
@@ -107,8 +156,14 @@ class TilePalette
             MapBuilder::ARBRE => Style::default()->bg(AnsiColor::Green)->fg(AnsiColor::Black),
             MapBuilder::EAU => Style::default()->bg(AnsiColor::Blue)->fg(AnsiColor::Blue),
             MapBuilder::FLEUR => Style::default()->bg(AnsiColor::Green)->fg(AnsiColor::LightMagenta),
-            'P' => Style::default()->bg(AnsiColor::Red)->fg(AnsiColor::White),
-            default => Style::default(),
+            default => null === self::playerIndex($tile)
+                ? Style::default()
+                : Style::default()->bg(AnsiColor::Black)->fg(match (self::playerIndex($tile) % 4) {
+                    0 => AnsiColor::LightRed,
+                    1 => AnsiColor::LightYellow,
+                    2 => AnsiColor::LightBlue,
+                    default => AnsiColor::LightMagenta,
+                }),
         };
     }
 

@@ -40,6 +40,10 @@ Three mitigations are in place: the sidebar panel shows both gauges live, `GameR
 
 `GameRunner::SNAPSHOT_EVERY` keeps the ring from being rewritten on every tick while playing: at x4 that would serialize the world a hundred times a second for a tenth of a second of history.
 
+Players are stamped on their own layer as `1`..`9`, not a shared `P`, so each cat gets its own glyph and colour — two cats used to be the same indistinguishable letter.
+
+**Map glyphs must be one column wide.** An emoji is two columns (`mb_strwidth('🐈') === 2`): php-tui writes it and pads a blank cell, which eats the neighbouring tile and shifts the rest of the row. Cats therefore wear `●◆▲★` on the grid and emoji in the side panel, where text flows. `testMapGlyphsAreOneColumnWide` guards it. On-map emoji only become possible once a tile spans two columns.
+
 `TilePalette` decides how a tile is painted. Terrain is the cell **background**, not a coloured character, so ground reads as solid areas and the glyph stays free for what stands on it — grass and water are plain spaces. Each terrain has four shades picked by hashing the tile coordinates: one flat colour looks like paint, and a shade redrawn at random every frame would make the map shimmer. The hash must avalanche — the first attempt used `crc32`, which is linear, so shades repeated every four tiles and wove visible diagonal stripes across the meadow (`testTheGrainRepeatsNoVisiblePattern` guards it).
 
 True colour is not universal, so `TilePalette::detect()` reads `COLORTERM` and falls back to sixteen ANSI colours without pretending to have shades. `docker-compose.yml` forwards `TERM` and `COLORTERM` from the host: without that the container advertises nothing and the fallback is all you ever get.

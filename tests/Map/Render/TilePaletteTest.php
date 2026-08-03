@@ -28,7 +28,49 @@ final class TilePaletteTest extends TestCase
 
         self::assertSame('✿', $palette->glyph(MapBuilder::FLEUR));
         self::assertSame('♣', $palette->glyph(MapBuilder::ARBRE));
-        self::assertSame('■', $palette->glyph('P'));
+    }
+
+    /**
+     * Players are stamped as 1..9 on their own layer. Every cat used to be the
+     * same letter in the same colour, so two of them were indistinguishable.
+     */
+    public function testEachPlayerGetsItsOwnGlyphAndColour(): void
+    {
+        $palette = new TilePalette(trueColor: true);
+
+        $glyphs = array_map($palette->glyph(...), ['1', '2', '3', '4']);
+        $colours = array_map(
+            static fn (string $tile): ?string => $palette->style($tile, 0, 0)->fg?->toHex(),
+            ['1', '2', '3', '4']
+        );
+
+        self::assertSame($glyphs, array_unique($glyphs));
+        self::assertSame($colours, array_unique($colours));
+    }
+
+    /**
+     * On the map a glyph must fit exactly one column. An emoji is two columns
+     * wide and would eat its neighbour, shifting the whole row.
+     */
+    public function testMapGlyphsAreOneColumnWide(): void
+    {
+        $palette = new TilePalette(trueColor: true);
+
+        foreach ([MapBuilder::HERBE, MapBuilder::EAU, MapBuilder::ARBRE, MapBuilder::FLEUR, '1', '2', '3', '4'] as $tile) {
+            self::assertSame(
+                1,
+                mb_strwidth($palette->glyph($tile), 'UTF-8'),
+                sprintf('la tuile %s deborde sur sa voisine', $tile)
+            );
+        }
+    }
+
+    public function testThePanelEmojiAreNotUsedOnTheMap(): void
+    {
+        // They are two columns wide, which is exactly why they stay in the
+        // side panel where text flows.
+        self::assertSame(2, mb_strwidth(TilePalette::playerEmoji(0), 'UTF-8'));
+        self::assertNotSame(TilePalette::playerEmoji(0), (new TilePalette(true))->glyph('1'));
     }
 
     /**
@@ -145,7 +187,7 @@ final class TilePaletteTest extends TestCase
 
         $backgrounds = array_map(
             static fn (string $tile): ?string => $palette->style($tile, 0, 0)->bg?->toHex(),
-            [MapBuilder::HERBE, MapBuilder::EAU, MapBuilder::ARBRE, 'P']
+            [MapBuilder::HERBE, MapBuilder::EAU, MapBuilder::ARBRE, '1']
         );
 
         self::assertSame($backgrounds, array_unique($backgrounds));
@@ -159,7 +201,7 @@ final class TilePaletteTest extends TestCase
     {
         $palette = new TilePalette(trueColor: false);
 
-        foreach ([MapBuilder::HERBE, MapBuilder::EAU, MapBuilder::ARBRE, MapBuilder::FLEUR, 'P'] as $tile) {
+        foreach ([MapBuilder::HERBE, MapBuilder::EAU, MapBuilder::ARBRE, MapBuilder::FLEUR, '1'] as $tile) {
             self::assertInstanceOf(AnsiColor::class, $palette->style($tile, 3, 5)->bg);
         }
     }

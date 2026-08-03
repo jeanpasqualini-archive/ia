@@ -412,8 +412,10 @@ class GameRunner
 
         $map->clearLayer(MapBuilder::LAYER_PLAYER);
 
-        foreach ($this->world->getPlayerCollection() as $player) {
-            $map->setItem($player->getPosition(), 'P', MapBuilder::LAYER_PLAYER);
+        // Each player is stamped with its own index so the renderer can tell
+        // them apart; every cat used to be the same indistinguishable letter.
+        foreach (array_values($this->world->getPlayerCollection()) as $index => $player) {
+            $map->setItem($player->getPosition(), (string) ($index + 1), MapBuilder::LAYER_PLAYER);
         }
 
         $map->updateFinalLayer();

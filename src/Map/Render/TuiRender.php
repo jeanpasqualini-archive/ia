@@ -275,7 +275,10 @@ class TuiRender implements MapRenderInterface
         $this->activeTab = min($this->activeTab, count($players) - 1);
 
         $tabs = TabsWidget::fromTitles(...array_map(
-            static fn (PlayerInterface $player): Line => Line::fromString(' ' . $player->getIdentifiant() . ' '),
+            static fn (int $index, PlayerInterface $player): Line => Line::fromString(
+                ' ' . TilePalette::playerEmoji($index) . ' ' . $player->getIdentifiant() . ' '
+            ),
+            array_keys($players),
             $players
         ))
             ->select($this->activeTab)
@@ -292,30 +295,40 @@ class TuiRender implements MapRenderInterface
 
     private function playerDetail(PlayerInterface $player): Widget
     {
-        $lines = [Line::fromString('')];
+        $index = array_search($player, $this->players(), true);
+        $lines = [
+            Line::fromSpans(
+                Span::fromString(TilePalette::playerEmoji(is_int($index) ? $index : 0) . '  '),
+                Span::styled(
+                    $player->getIdentifiant(),
+                    Style::default()->fg(AnsiColor::White)
+                ),
+            ),
+            Line::fromString(''),
+        ];
 
         if ($player instanceof PlayerHasEstomac) {
             $food = $player->getEstomac()->getNouriture();
             $lines[] = Line::fromSpans(
-                Span::fromString('Estomac  '),
+                Span::fromString('🍽  '),
                 Span::styled($this->gauge($food, 10), $this->foodStyle($food)),
                 Span::fromString(sprintf(' %d/10', $food)),
             );
         }
 
-        $lines[] = Line::fromString(sprintf('Position %s', (string) $player->getPosition()));
+        $lines[] = Line::fromString(sprintf('📍  %s', (string) $player->getPosition()));
         $lines[] = Line::fromString('');
         $lines[] = Line::fromSpans(
             Span::styled('Objectifs', Style::default()->fg(AnsiColor::Yellow))
         );
 
         foreach ($this->objectifs($player) as $description) {
-            $lines[] = Line::fromString('  - ' . $description);
+            $lines[] = Line::fromString('  🎯 ' . $description);
         }
 
         if ([] === $this->objectifs($player)) {
             $lines[] = Line::fromSpans(
-                Span::styled('  (aucun, il flane)', Style::default()->fg(AnsiColor::DarkGray))
+                Span::styled('  💤 aucun, il flane', Style::default()->fg(AnsiColor::DarkGray))
             );
         }
 
