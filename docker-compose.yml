@@ -11,3 +11,7 @@ services:
     working_dir: /app
     environment:
       COMPOSER_HOME: /tmp/composer
+      # Forwarded from the host: without them the container sees no terminal
+      # capability at all and the renderer falls back to sixteen colours.
+      TERM: "${TERM:-xterm-256color}"
+      COLORTERM: "${COLORTERM:-}"

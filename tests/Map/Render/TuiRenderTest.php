@@ -48,8 +48,10 @@ final class TuiRenderTest extends TestCase
         self::assertStringContainsString('Carte', $frame);
         self::assertStringContainsString('Journal', $frame);
         self::assertStringContainsString('Temps', $frame);
+        // Terrain is painted as a background colour, so only what stands on
+        // the ground still has a glyph of its own.
         self::assertStringContainsString('✿', $frame, 'la fleur est dessinee');
-        self::assertStringContainsString('≈', $frame, "l'eau est dessinee");
+        self::assertStringContainsString('♣', $frame, 'le sous-bois est dessine');
     }
 
     public function testThePlayerGlyphIsDrawnOverTheGround(): void

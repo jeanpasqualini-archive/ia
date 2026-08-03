@@ -40,6 +40,10 @@ Three mitigations are in place: the sidebar panel shows both gauges live, `GameR
 
 `GameRunner::SNAPSHOT_EVERY` keeps the ring from being rewritten on every tick while playing: at x4 that would serialize the world a hundred times a second for a tenth of a second of history.
 
+`TilePalette` decides how a tile is painted. Terrain is the cell **background**, not a coloured character, so ground reads as solid areas and the glyph stays free for what stands on it — grass and water are plain spaces. Each terrain has four shades picked by hashing the tile coordinates: one flat colour looks like paint, and a shade redrawn at random every frame would make the map shimmer. The hash must avalanche — the first attempt used `crc32`, which is linear, so shades repeated every four tiles and wove visible diagonal stripes across the meadow (`testTheGrainRepeatsNoVisiblePattern` guards it).
+
+True colour is not universal, so `TilePalette::detect()` reads `COLORTERM` and falls back to sixteen ANSI colours without pretending to have shades. `docker-compose.yml` forwards `TERM` and `COLORTERM` from the host: without that the container advertises nothing and the fallback is all you ever get.
+
 Renderers are swappable through `MapRenderInterface`. Tests use php-tui's own doubles — `DummyBackend`, `StringWriter`, `TestRawMode`, `SizeFromEnvVarProvider` — so frames render headlessly and can be asserted as strings (see `tests/Map/Render/TuiRenderTest.php`).
 
 ## Architecture

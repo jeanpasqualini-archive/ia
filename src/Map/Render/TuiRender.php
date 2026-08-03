@@ -7,7 +7,6 @@ namespace Map\Render;
 use IA\CatIA;
 use Logger\BufferLogger;
 use Logger\MultipleLogger;
-use Map\Builder\MapBuilder;
 use Map\Player\PlayerHasEstomac;
 use Map\Player\PlayerInterface;
 use Map\World\WorldContainer;
@@ -69,7 +68,9 @@ class TuiRender implements MapRenderInterface
         private TimeControl $timeControl = new TimeControl(),
         private ?Backend $backend = null,
         private MemoryUsage $memoryUsage = new MemoryUsage(),
+        private ?TilePalette $palette = null,
     ) {
+        $this->palette ??= TilePalette::detect();
         $this->bufferLog = new BufferLogger();
         $this->logger->addLogger($this->bufferLog);
     }
@@ -447,11 +448,14 @@ class TuiRender implements MapRenderInterface
     {
         $lines = [];
 
-        foreach ($map as $row) {
+        foreach ($map as $y => $row) {
             $spans = [];
 
-            foreach ($row as $tile) {
-                $spans[] = Span::styled($this->glyph($tile), $this->tileStyle($tile));
+            foreach ($row as $x => $tile) {
+                $spans[] = Span::styled(
+                    $this->palette->glyph($tile),
+                    $this->palette->style($tile, $x, $y)
+                );
             }
 
             $lines[] = Line::fromSpans(...$spans);
@@ -475,27 +479,5 @@ class TuiRender implements MapRenderInterface
             ->widget($inner);
     }
 
-    private function glyph(string $tile): string
-    {
-        return match ($tile) {
-            MapBuilder::HERBE => '░',
-            MapBuilder::ARBRE => '♣',
-            MapBuilder::EAU => '≈',
-            MapBuilder::FLEUR => '✿',
-            'P' => '■',
-            default => $tile,
-        };
-    }
 
-    private function tileStyle(string $tile): Style
-    {
-        return match ($tile) {
-            MapBuilder::HERBE => Style::default()->fg(AnsiColor::Green),
-            MapBuilder::ARBRE => Style::default()->fg(AnsiColor::LightGreen),
-            MapBuilder::EAU => Style::default()->fg(AnsiColor::Cyan),
-            MapBuilder::FLEUR => Style::default()->fg(AnsiColor::LightMagenta),
-            'P' => Style::default()->fg(AnsiColor::White)->bg(AnsiColor::Red),
-            default => Style::default(),
-        };
-    }
 }
