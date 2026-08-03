@@ -1,19 +1,35 @@
 <?php
-/**
- * Created by PhpStorm.
- * User: darkilliant
- * Date: 27/12/15
- * Time: 17:35
- */
+
+declare(strict_types=1);
 
 namespace Map\Render;
 
+interface MapRenderInterface
+{
+    /**
+     * Take over the screen. Must be idempotent.
+     */
+    public function init(): void;
 
-use Psr\Log\LoggerInterface;
+    /**
+     * Give the terminal back to the shell.
+     */
+    public function close(): void;
 
-interface MapRenderInterface {
-    public function init();
+    /**
+     * Playable area, in tiles.
+     *
+     * @return array{x: int, y: int}
+     */
     public function getSize(): array;
-    public function render($map);
-    public function clear($map);
+
+    /**
+     * @param array<int, array<int, string>> $map
+     */
+    public function render($map): void;
+
+    /**
+     * @param array<int, array<int, string>> $map
+     */
+    public function clear($map): void;
 }
