@@ -65,12 +65,29 @@ final class TilePaletteTest extends TestCase
         }
     }
 
-    public function testThePanelEmojiAreNotUsedOnTheMap(): void
+    /**
+     * The panel marker is the map glyph, so a cat reads as the same cat in
+     * both places — and, like everything else here, it is one column wide.
+     */
+    public function testThePanelMarkerIsTheMapGlyph(): void
     {
-        // They are two columns wide, which is exactly why they stay in the
-        // side panel where text flows.
-        self::assertSame(2, mb_strwidth(TilePalette::playerEmoji(0), 'UTF-8'));
-        self::assertNotSame(TilePalette::playerEmoji(0), (new TilePalette(true))->glyph('1'));
+        self::assertSame((new TilePalette(true))->glyph('1'), TilePalette::playerMarker(0));
+        self::assertSame(1, mb_strwidth(TilePalette::playerMarker(0), 'UTF-8'));
+    }
+
+    public function testEveryTileIsExactlyTwoColumnsWide(): void
+    {
+        $palette = new TilePalette(trueColor: true);
+
+        foreach ([MapBuilder::HERBE, MapBuilder::EAU, MapBuilder::ARBRE, MapBuilder::FLEUR, '1', '2'] as $tile) {
+            foreach ([[0, 0], [1, 0], [3, 5]] as [$x, $y]) {
+                self::assertSame(
+                    TilePalette::TILE_WIDTH,
+                    mb_strwidth($palette->cell($tile, $x, $y)->content, 'UTF-8'),
+                    sprintf('la tuile %s ne fait pas deux colonnes', $tile)
+                );
+            }
+        }
     }
 
     /**

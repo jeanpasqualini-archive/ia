@@ -124,8 +124,8 @@ final class TuiRenderTest extends TestCase
         $this->render(container: $container)->render([['X']]);
         $frame = $this->backend->toString();
 
-        self::assertStringContainsString('🍽', $frame, 'estomac');
-        self::assertStringContainsString('🐈', $frame, 'emoji du chat dans le panneau');
+        self::assertStringContainsString('Estomac', $frame);
+        self::assertStringContainsString('●', $frame, 'le marqueur du chat, le meme que sur la carte');
         self::assertStringContainsString('Objectifs', $frame);
         self::assertStringContainsString('Manger', $frame, 'l objectif en cours est decrit');
         self::assertStringContainsString('0/10', $frame, "l'estomac est vide");
@@ -179,7 +179,45 @@ final class TuiRenderTest extends TestCase
 
     public function testThePlayableAreaLeavesRoomForTheDashboard(): void
     {
-        self::assertSame(['x' => 64, 'y' => 17], $this->render()->getSize());
+        // Half as many tiles across as there are columns: a tile spans two.
+        self::assertSame(['x' => 32, 'y' => 17], $this->render()->getSize());
+    }
+
+    /**
+     * Every rendered row must be exactly as wide as the screen.
+     *
+     * php-tui's paragraph rendering stores one grapheme per cell without
+     * accounting for its display width, so a two column character — any emoji
+     * — takes one cell and two columns. Everything after it on that row shifts
+     * right and the block border lands one column off. This is the test that
+     * was missing when emoji were tried in the side panel.
+     */
+    public function testNoRowIsWiderThanTheScreen(): void
+    {
+        $world = WorldFactory::fromRows(['XXFY', 'XEXX'], players: 2);
+        $container = new WorldContainer();
+        $container->setWorld($world);
+
+        [$one, $two] = $world->getPlayerCollection();
+        $one->getEstomac()->setNouriture(0);
+        $one->update($world);
+
+        $this->render(container: $container)->render([
+            ['X', 'F', 'Y', '1'],
+            ['E', 'X', '2', 'X'],
+        ]);
+
+        foreach (explode("\n", $this->backend->toString()) as $number => $row) {
+            if ('' === $row) {
+                continue;
+            }
+
+            self::assertSame(
+                100,
+                mb_strwidth($row, 'UTF-8'),
+                sprintf('la ligne %d deborde ou se retracte', $number)
+            );
+        }
     }
 
     public function testTheMemoryPanelReportsBothCeilingsAndTheSnapshotRing(): void

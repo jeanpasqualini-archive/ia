@@ -137,8 +137,9 @@ class TuiRender implements MapRenderInterface
         $cols = $size instanceof Size ? $size->cols : 80;
         $lines = $size instanceof Size ? $size->lines : 24;
 
+        // A tile spans two columns, so the map holds half as many of them.
         return [
-            'x' => max(20, $cols - self::SIDEBAR_WIDTH - 2),
+            'x' => max(10, intdiv($cols - self::SIDEBAR_WIDTH - 2, TilePalette::TILE_WIDTH)),
             'y' => max(10, $lines - self::LOG_HEIGHT - self::CONTROL_HEIGHT - 2),
         ];
     }
@@ -276,7 +277,7 @@ class TuiRender implements MapRenderInterface
 
         $tabs = TabsWidget::fromTitles(...array_map(
             static fn (int $index, PlayerInterface $player): Line => Line::fromString(
-                ' ' . TilePalette::playerEmoji($index) . ' ' . $player->getIdentifiant() . ' '
+                ' ' . TilePalette::playerMarker($index) . ' ' . $player->getIdentifiant() . ' '
             ),
             array_keys($players),
             $players
@@ -298,7 +299,7 @@ class TuiRender implements MapRenderInterface
         $index = array_search($player, $this->players(), true);
         $lines = [
             Line::fromSpans(
-                Span::fromString(TilePalette::playerEmoji(is_int($index) ? $index : 0) . '  '),
+                Span::fromString(TilePalette::playerMarker(is_int($index) ? $index : 0) . '  '),
                 Span::styled(
                     $player->getIdentifiant(),
                     Style::default()->fg(AnsiColor::White)
@@ -310,25 +311,25 @@ class TuiRender implements MapRenderInterface
         if ($player instanceof PlayerHasEstomac) {
             $food = $player->getEstomac()->getNouriture();
             $lines[] = Line::fromSpans(
-                Span::fromString('🍽  '),
+                Span::fromString('Estomac '),
                 Span::styled($this->gauge($food, 10), $this->foodStyle($food)),
                 Span::fromString(sprintf(' %d/10', $food)),
             );
         }
 
-        $lines[] = Line::fromString(sprintf('📍  %s', (string) $player->getPosition()));
+        $lines[] = Line::fromString(sprintf('Position %s', (string) $player->getPosition()));
         $lines[] = Line::fromString('');
         $lines[] = Line::fromSpans(
             Span::styled('Objectifs', Style::default()->fg(AnsiColor::Yellow))
         );
 
         foreach ($this->objectifs($player) as $description) {
-            $lines[] = Line::fromString('  🎯 ' . $description);
+            $lines[] = Line::fromString('  - ' . $description);
         }
 
         if ([] === $this->objectifs($player)) {
             $lines[] = Line::fromSpans(
-                Span::styled('  💤 aucun, il flane', Style::default()->fg(AnsiColor::DarkGray))
+                Span::styled('  (aucun, il flane)', Style::default()->fg(AnsiColor::DarkGray))
             );
         }
 
@@ -483,10 +484,7 @@ class TuiRender implements MapRenderInterface
             $spans = [];
 
             foreach ($row as $x => $tile) {
-                $spans[] = Span::styled(
-                    $this->palette->glyph($tile),
-                    $this->palette->style($tile, $x, $y)
-                );
+                $spans[] = $this->palette->cell($tile, $x, $y);
             }
 
             $lines[] = Line::fromSpans(...$spans);

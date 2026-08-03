@@ -9,6 +9,7 @@ use PhpTui\Tui\Color\AnsiColor;
 use PhpTui\Tui\Color\Color;
 use PhpTui\Tui\Color\RgbColor;
 use PhpTui\Tui\Style\Style;
+use PhpTui\Tui\Text\Span;
 
 /**
  * Turns a tile into the way it is painted.
@@ -25,6 +26,18 @@ use PhpTui\Tui\Style\Style;
  *
  * True colour is not universal — Terminal.app still tops out at 256 — so a
  * sixteen colour fallback is kept. It cannot express shades and does not try.
+ *
+ * A tile is painted on TWO columns. A terminal cell is about twice as tall as
+ * it is wide, so one cell per tile squashed the whole map vertically: round
+ * lakes came out as ovals and a diagonal step looked like 27 degrees instead
+ * of 45. Two columns make a tile square.
+ *
+ * Every character used here is one column wide, emoji included — that is, they
+ * are excluded. php-tui's paragraph rendering stores a grapheme per cell
+ * without accounting for its display width, so a two column emoji occupies one
+ * cell and two columns: everything after it on that row shifts right and the
+ * block border lands one column off. This holds in the side panels too, not
+ * just on the grid.
  */
 class TilePalette
 {
@@ -102,13 +115,42 @@ class TilePalette
         return 1 === preg_match('/^[1-9]$/', $tile) ? (int) $tile - 1 : null;
     }
 
+    /** Columns per tile. */
+    public const TILE_WIDTH = 2;
+
     /**
-     * Emoji identifying a player, for the side panel where text flows and a
-     * double width character costs nothing.
+     * The shape identifying a player, used on the map and in the panel alike
+     * so the two read as the same cat.
      */
-    public static function playerEmoji(int $index): string
+    public static function playerMarker(int $index): string
     {
-        return ['🐈', '🐱', '🐯', '🦊'][$index % 4];
+        return self::PLAYERS[$index % count(self::PLAYERS)]['glyph'];
+    }
+
+    /**
+     * The tile as it is drawn: always exactly TILE_WIDTH columns.
+     */
+    public function cell(string $tile, int $x, int $y): Span
+    {
+        $style = $this->style($tile, $x, $y);
+        $index = self::playerIndex($tile);
+
+        if (null !== $index) {
+            return Span::styled(self::playerMarker($index) . ' ', $style);
+        }
+
+        $glyph = $this->glyph($tile);
+
+        if (' ' === $glyph) {
+            return Span::styled('  ', $style);
+        }
+
+        // Vegetation leans left or right depending on the tile, which keeps a
+        // wood from looking like a printed grid.
+        return Span::styled(
+            0 === $this->variant($x, $y) % 2 ? $glyph . ' ' : ' ' . $glyph,
+            $style
+        );
     }
 
     public function style(string $tile, int $x, int $y): Style
