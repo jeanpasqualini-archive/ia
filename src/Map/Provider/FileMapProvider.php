@@ -1,67 +1,57 @@
 <?php
-/**
- * Created by PhpStorm.
- * User: darkilliant
- * Date: 29/12/15
- * Time: 18:51
- */
+
+declare(strict_types=1);
 
 namespace Map\Provider;
 
-
 use Map\Builder\MapBuilder;
+use SplFileObject;
 
-function mb_str_split($string,$string_length=1,$charset='utf-8') {
-    if(mb_strlen($string,$charset)>$string_length || !$string_length) {
-        do {
-            $c = mb_strlen($string,$charset);
-            $parts[] = mb_substr($string,0,$string_length,$charset);
-            $string = mb_substr($string,$string_length,$c-$string_length,$charset);
-        }while(!empty($string));
-    } else {
-        $parts = array($string);
-    }
-    return $parts;
-}
+/**
+ * Reads a hand-drawn unicode map (see app/map/terre.txt) and converts each
+ * glyph back to its tile constant.
+ */
+class FileMapProvider implements MapProviderInterface
+{
+    private const GLYPHS = [
+        '░' => MapBuilder::HERBE,
+        '✿' => MapBuilder::FLEUR,
+        '↟' => MapBuilder::ARBRE,
+        '∼' => MapBuilder::EAU,
+    ];
 
+    private SplFileObject $file;
 
-
-class FileMapProvider {
-
-    protected $file;
-
-    public function __construct($file)
+    public function __construct(string $file)
     {
-        $this->file = new \SplFileObject($file, "r+");
+        $this->file = new SplFileObject($file, 'r');
     }
 
-    public function getMap()
+    /**
+     * @return list<string>
+     */
+    public function getMap(): array
     {
-        $lines = array();
+        $lines = [];
 
-        while(!$this->file->eof())
-        {
-            $lineFile = $this->file->fgets();
+        while (!$this->file->eof()) {
+            $line = rtrim((string) $this->file->fgets(), "\r\n");
 
-            //throw new \Exception(utf8_decode($lineFile));
+            if ('' === $line) {
+                continue;
+            }
 
-            $lines[] = implode("", array_map(function($item) {
-                return $this->format($item);
-            }, mb_str_split($lineFile)));
+            $lines[] = implode('', array_map(
+                $this->format(...),
+                mb_str_split($line)
+            ));
         }
 
         return $lines;
     }
 
-    public function format($item)
+    public function format(string $glyph): string
     {
-        $mapping = array(
-            '░' => MapBuilder::HERBE,
-            '✿' => MapBuilder::FLEUR,
-            '↟' => MapBuilder::ARBRE,
-            '∼' => MapBuilder::EAU,
-        );
-
-        return (isset($mapping[$item]) ? $mapping[$item] : "X");
+        return self::GLYPHS[$glyph] ?? MapBuilder::HERBE;
     }
 }
