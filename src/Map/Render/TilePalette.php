@@ -49,14 +49,19 @@ class TilePalette
         MapBuilder::HERBE => ['#3f6b36', '#48783d', '#375f30', '#436f39'],
         MapBuilder::ARBRE => ['#23461e', '#1d3c19', '#274c21', '#204219'],
         MapBuilder::EAU => ['#1f4f7a', '#265a8a', '#1a4468', '#22537f'],
-        // Dry and brownish, so a bramble patch reads as something other than
-        // meadow at a glance. The player is meant to see them; the cat is the
-        // one that has to find out.
-        MapBuilder::RONCE => ['#6b5a2f', '#5d4e28', '#755f33', '#63522b'],
     ];
 
     /** Flowers are not all the same colour, which is half of why meadows read well. */
     private const BLOOMS = ['#e8619d', '#f2d13c', '#e05c5c', '#d98cf0'];
+
+    /**
+     * Brambles were painted as their own brown ground at first, and read as
+     * bare earth — a path, if anything, rather than a thing that stings. They
+     * are not a terrain: they are a plant standing on the meadow, exactly
+     * like a flower, so they are drawn the same way. The ground stays green
+     * and the thorn is a dark tangle on it.
+     */
+    private const THORN = '#2f2119';
 
     /**
      * The far edge of what a cat can see.
@@ -116,8 +121,9 @@ class TilePalette
             // row. mb_strwidth answers 1 for it, so the frame width test never
             // saw it: Unicode says narrow, the font substitution says
             // otherwise. A canopy is better read as a dark mass anyway.
-            MapBuilder::HERBE, MapBuilder::EAU, MapBuilder::ARBRE, MapBuilder::RONCE => ' ',
+            MapBuilder::HERBE, MapBuilder::EAU, MapBuilder::ARBRE => ' ',
             MapBuilder::FLEUR => '✿',
+            MapBuilder::RONCE => '×',
             default => $tile,
         };
     }
@@ -202,8 +208,12 @@ class TilePalette
         return match ($tile) {
             // Nothing is drawn on top of these, so they carry a background
             // and no foreground at all.
-            MapBuilder::HERBE, MapBuilder::EAU, MapBuilder::ARBRE, MapBuilder::RONCE => Style::default()
+            MapBuilder::HERBE, MapBuilder::EAU, MapBuilder::ARBRE => Style::default()
                 ->bg($this->shade($tile, $variant)),
+            // Standing in the meadow, like the flower it grows beside.
+            MapBuilder::RONCE => Style::default()
+                ->bg($this->shade(MapBuilder::HERBE, $variant))
+                ->fg(RgbColor::fromHex(self::THORN)),
             // A flower sits in the meadow, so it keeps the grass underneath.
             MapBuilder::FLEUR => Style::default()
                 ->bg($this->shade(MapBuilder::HERBE, $variant))
@@ -234,7 +244,7 @@ class TilePalette
             MapBuilder::HERBE => Style::default()->bg(AnsiColor::LightGreen)->fg(AnsiColor::LightGreen),
             MapBuilder::ARBRE => Style::default()->bg(AnsiColor::Green)->fg(AnsiColor::Green),
             MapBuilder::EAU => Style::default()->bg(AnsiColor::Blue)->fg(AnsiColor::Blue),
-            MapBuilder::RONCE => Style::default()->bg(AnsiColor::DarkGray)->fg(AnsiColor::DarkGray),
+            MapBuilder::RONCE => Style::default()->bg(AnsiColor::LightGreen)->fg(AnsiColor::Black),
             MapBuilder::FLEUR => Style::default()->bg(AnsiColor::LightGreen)->fg(AnsiColor::Magenta),
             default => null === self::playerIndex($tile)
                 ? Style::default()

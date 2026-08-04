@@ -27,7 +27,8 @@ final class TilePaletteTest extends TestCase
         $palette = new TilePalette(trueColor: true);
 
         self::assertSame('✿', $palette->glyph(MapBuilder::FLEUR));
-        self::assertSame(' ', $palette->glyph(MapBuilder::ARBRE));
+        self::assertSame('×', $palette->glyph(MapBuilder::RONCE), 'une ronce est une plante, pas un sol');
+        self::assertSame(' ', $palette->glyph(MapBuilder::ARBRE), 'un bois est un sol');
     }
 
     /**
@@ -56,7 +57,7 @@ final class TilePaletteTest extends TestCase
     {
         $palette = new TilePalette(trueColor: true);
 
-        foreach ([MapBuilder::HERBE, MapBuilder::EAU, MapBuilder::ARBRE, MapBuilder::FLEUR, '1', '2', '3', '4'] as $tile) {
+        foreach ([MapBuilder::HERBE, MapBuilder::EAU, MapBuilder::ARBRE, MapBuilder::FLEUR, MapBuilder::RONCE, '1', '2', '3', '4'] as $tile) {
             self::assertSame(
                 1,
                 mb_strwidth($palette->glyph($tile), 'UTF-8'),
@@ -80,7 +81,7 @@ final class TilePaletteTest extends TestCase
         $palette = new TilePalette(trueColor: true);
         $glyphs = [];
 
-        foreach ([MapBuilder::HERBE, MapBuilder::EAU, MapBuilder::ARBRE, MapBuilder::FLEUR] as $tile) {
+        foreach ([MapBuilder::HERBE, MapBuilder::EAU, MapBuilder::ARBRE, MapBuilder::FLEUR, MapBuilder::RONCE] as $tile) {
             $glyphs[] = $palette->glyph($tile);
         }
 
@@ -111,7 +112,7 @@ final class TilePaletteTest extends TestCase
     {
         $palette = new TilePalette(trueColor: true);
 
-        foreach ([MapBuilder::HERBE, MapBuilder::EAU, MapBuilder::ARBRE, MapBuilder::FLEUR, '1', '2'] as $tile) {
+        foreach ([MapBuilder::HERBE, MapBuilder::EAU, MapBuilder::ARBRE, MapBuilder::FLEUR, MapBuilder::RONCE, '1', '2'] as $tile) {
             foreach ([[0, 0], [1, 0], [3, 5]] as [$x, $y]) {
                 self::assertSame(
                     TilePalette::TILE_WIDTH,
