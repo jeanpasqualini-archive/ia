@@ -9,6 +9,11 @@ Le premier palier est la représentation des bas instincs :
 
 La démonstration s'affiche en plein écran dans le terminal (php-tui, pas d'extension PHP à compiler).
 
+La carte est dessinée en demi-blocs : deux tuiles par cellule, empilées, l'une
+en couleur d'avant-plan et l'autre en fond. Quatre fois plus de tuiles à
+l'écran qu'avec un caractère par tuile — et plus aucun glyphe sur la carte,
+tout y parle par la couleur.
+
 Lancer le jeu : make run   (dans le conteneur, sans son)
 Avec le son    : make play  (PHP de la machine, voir plus bas)
 Lancer les tests : make test
@@ -24,9 +29,6 @@ Touches :
  - `flèches` déplacent la vue, `z`/`Z` zoom et dézoom
  - à la souris : glisser la carte pour la déplacer, molette pour zoomer
  - `c` ou le bouton du panneau IA : recentre la vue sur le chat affiché
- - `f` bascule en haute résolution : quatre fois plus de tuiles à l'écran,
-   deux par cellule empilées en demi-blocs — mais les glyphes cèdent la place
-   à la seule couleur, faute de place pour un caractère
  - `t` time machine, puis `p`/`a` pour naviguer dans les snapshots
  - `tab` ou `1`..`9` pour changer d'onglet IA
  - `r` nouvelle map, `x` persiste la mémoire, `m` coupe le son, `q` quitte

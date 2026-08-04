@@ -27,17 +27,22 @@ use PhpTui\Tui\Text\Span;
  * True colour is not universal — Terminal.app still tops out at 256 — so a
  * sixteen colour fallback is kept. It cannot express shades and does not try.
  *
- * A tile is painted on TWO columns. A terminal cell is about twice as tall as
- * it is wide, so one cell per tile squashed the whole map vertically: round
- * lakes came out as ovals and a diagonal step looked like 27 degrees instead
- * of 45. Two columns make a tile square.
+ * **The map is drawn in colour alone.** A tile is half a cell — two of them
+ * share one character, an upper half block whose foreground is the tile above
+ * and whose background the tile below — and a character cannot be cut in
+ * half, so nothing on the ground has a shape any more. That is the trade the
+ * resolution is bought with, and it cost nothing to make: the blooms, the
+ * thorns and the cats were all coloured before they were ever shaped.
  *
- * Every character used here is one column wide, emoji included — that is, they
- * are excluded. php-tui's paragraph rendering stores a grapheme per cell
- * without accounting for its display width, so a two column emoji occupies one
- * cell and two columns: everything after it on that row shifts right and the
- * block border lands one column off. This holds in the side panels too, not
- * just on the grid.
+ * Half a cell is square, so lakes stay round. The two column tile this
+ * replaced was square for the same reason — a terminal cell being about twice
+ * as tall as it is wide — and it fitted a quarter as many tiles on screen.
+ *
+ * Shapes remain in the side panel, where text flows, and the rule that governs
+ * them still holds there: every character must be one column wide, emoji
+ * excluded. php-tui's paragraph rendering stores a grapheme per cell without
+ * accounting for its display width, so a two column emoji occupies one cell
+ * and two columns, and the block border lands one column off.
  */
 class TilePalette
 {
@@ -127,33 +132,6 @@ class TilePalette
         return new self(in_array(getenv('COLORTERM'), ['truecolor', '24bit'], true));
     }
 
-    public function glyph(string $tile): string
-    {
-        $player = self::playerIndex($tile);
-
-        if (null !== $player) {
-            return self::PLAYERS[$player % count(self::PLAYERS)]['glyph'];
-        }
-
-        return match ($tile) {
-            // Every terrain is ground, and ground is a colour. The forest used
-            // to be the exception, drawn as a club suit — which macOS renders
-            // from the colour emoji font, two columns wide, shifting the whole
-            // row. mb_strwidth answers 1 for it, so the frame width test never
-            // saw it: Unicode says narrow, the font substitution says
-            // otherwise. A canopy is better read as a dark mass anyway.
-            MapBuilder::HERBE, MapBuilder::EAU, MapBuilder::ARBRE,
-            MapBuilder::TROU, MapBuilder::FOURRE,
-            MapBuilder::ROCHE, MapBuilder::GALERIE => ' ',
-            MapBuilder::CAVERNE => 'o',
-            MapBuilder::CHAMPIGNON => '¤',
-            MapBuilder::FLEUR => '✿',
-            MapBuilder::DIGITALE => '❀',
-            MapBuilder::RONCE => '×',
-            default => $tile,
-        };
-    }
-
     /**
      * Players are stamped on their own layer as 1..9, so each one keeps its
      * own colour instead of every cat being an identical letter.
@@ -163,9 +141,6 @@ class TilePalette
         return 1 === preg_match('/^[1-9]$/', $tile) ? (int) $tile - 1 : null;
     }
 
-    /** Columns per tile. */
-    public const TILE_WIDTH = 2;
-
     /**
      * The shape identifying a player, used on the map and in the panel alike
      * so the two read as the same cat.
@@ -173,36 +148,6 @@ class TilePalette
     public static function playerMarker(int $index): string
     {
         return self::PLAYERS[$index % count(self::PLAYERS)]['glyph'];
-    }
-
-    /**
-     * The tile as it is drawn: always exactly TILE_WIDTH columns.
-     */
-    public function cell(string $tile, int $x, int $y, bool $edgeOfSight = false): Span
-    {
-        $index = self::playerIndex($tile);
-
-        // A cat standing on the boundary keeps its own colours. The edge is
-        // drawn to say where sight ends, not to hide what is there.
-        if (null !== $index) {
-            return Span::styled(self::playerMarker($index) . ' ', $this->style($tile, $x, $y));
-        }
-
-        $style = $edgeOfSight ? $this->sightEdgeStyle() : $this->style($tile, $x, $y);
-
-        $glyph = $this->glyph($tile);
-
-        if (' ' === $glyph) {
-            return Span::styled('  ', $style);
-        }
-
-        // Flowers lean left or right depending on the tile, which keeps a bed
-        // of them from looking like a printed grid. They are the only thing
-        // still drawn as a character on the ground.
-        return Span::styled(
-            0 === $this->variant($x, $y) % 2 ? $glyph . ' ' : ' ' . $glyph,
-            $style
-        );
     }
 
     /**
@@ -313,6 +258,14 @@ class TilePalette
      */
     public function pixel(string $tile, int $x, int $y): Color
     {
+        // Sixteen colours can still stack two tiles in a cell — a foreground
+        // and a background is all it takes — they simply have sixteen answers
+        // rather than shades. Handing back a true colour here would emit
+        // escapes such a terminal cannot honour.
+        if (!$this->trueColor) {
+            return $this->ansi($tile)->bg ?? AnsiColor::Black;
+        }
+
         $variant = $this->variant($x, $y);
         $index = self::playerIndex($tile);
 
@@ -327,12 +280,6 @@ class TilePalette
             MapBuilder::CHAMPIGNON => RgbColor::fromHex(self::MUSHROOM),
             default => $this->shade($tile, $variant),
         };
-    }
-
-    /** Whether the high resolution view can be drawn at all. */
-    public function hasTrueColor(): bool
-    {
-        return $this->trueColor;
     }
 
     public function sightEdgeColour(): Color

@@ -67,7 +67,7 @@ make shell    # shell in the container
 make help     # all targets
 ```
 
-Keys: `space` play/pause, `n` one tick, `-`/`+` speed, **arrows to move the view, `z`/`Z` to zoom in and out, or drag the map with the mouse and zoom with the wheel**, `c` centre on the selected cat, `f` high resolution, `t` time machine then `p`/`a` to browse snapshots, `tab` or `1`..`9` to switch AI panel, `r` new map, `x` persist memory, `m` mute, `q` quit (`b`/`s` are kept as pause/play aliases). The game starts paused; `--play` starts it running.
+Keys: `space` play/pause, `n` one tick, `-`/`+` speed, **arrows to move the view, `z`/`Z` to zoom in and out, or drag the map with the mouse and zoom with the wheel**, `c` centre on the selected cat, `t` time machine then `p`/`a` to browse snapshots, `tab` or `1`..`9` to switch AI panel, `r` new map, `x` persist memory, `m` mute, `q` quit (`b`/`s` are kept as pause/play aliases). The game starts paused; `--play` starts it running.
 
 In raw mode Ctrl+C is delivered as a key event, not a signal — quit with `q`. If the process is killed from outside, the tty is left raw: run `reset`.
 
@@ -151,13 +151,15 @@ Three mitigations are in place: the sidebar panel shows both gauges live, `GameR
 
 Players are stamped on their own layer as `1`..`9`, not a shared `P`, so each cat gets its own glyph and colour — two cats used to be the same indistinguishable letter.
 
-**`f` switches to half block rendering**, where a tile is half a cell instead of two columns: a `▀` whose foreground is the tile above and whose background the tile below. Four times as many tiles on screen — the coverage of the 1:2 zoom, except that zoom *samples* and throws away three tiles in four while this draws all of them. A tile stays square either way, so lakes stay round.
-
 What it costs is the glyphs: a character fills a whole cell, so at half a cell per tile a flower has only its colour left to speak with. `TilePalette::pixel()` is that question — what colour is this tile — and everything already had an answer, since the blooms, the thorns and the cats were coloured before they were shaped. The mode is refused without true colour, where two tiles in one cell cannot both be said.
 
-**A tile spans two columns** (`TilePalette::TILE_WIDTH`). A terminal cell is about twice as tall as it is wide, so one cell per tile squashed the map vertically — round lakes came out as ovals and a diagonal step looked like 27 degrees rather than 45. `getSize()` therefore reports half as many tiles across as there are columns.
+**A tile is half a cell.** Two of them share one character — an upper half block whose foreground is the tile above and whose background the tile below — which puts 64x34 tiles on a hundred column terminal where the previous two-column tile fitted 32x17. Half a cell is square, so lakes stay round; the two-column tile was square for the same reason, a terminal cell being about twice as tall as it is wide, and it showed a quarter as much.
+
+**The map is drawn in colour alone**, because a character cannot be cut in half. That is the trade the resolution is bought with, and it cost nothing to make: the blooms, the thorns and the cats were all coloured before they were ever shaped. `TilePalette::pixel()` is the whole question — what colour is this tile — and it answers in the terminal's own currency, an `RgbColor` where there is true colour and an `AnsiColor` where there are sixteen. Half blocks work either way: a foreground and a background is all they need.
 
 **Nothing in the UI may be two columns wide — emoji included.** php-tui's paragraph rendering stores one grapheme per cell without accounting for its display width (`Buffer::putString` handles it, the paragraph path does not), so an emoji takes one cell and two columns: everything after it on that row shifts right and the block border lands one column off. This bites in the side panels exactly as much as on the grid, which is not obvious — measuring the character in isolation says nothing. `testNoRowIsWiderThanTheScreen` renders a full frame and asserts every row is exactly the screen width; it is the test that was missing when emoji were first tried.
+
+Shapes survive in the side panel, where text flows, and the rule below still governs them there — it simply no longer applies to the map, which has no writing on it at all.
 
 **Measuring a character's width in PHP is not enough to know how wide it will be drawn.** `mb_strwidth` reports the Unicode width; the terminal reports the *font's*. A codepoint with an emoji presentation gets substituted from the colour emoji font, which draws it on two columns whatever Unicode says — the club suit that used to mark the forest measured one column in PHP and took two on screen, so `testNoRowIsWiderThanTheScreen` stayed green while the border sat one column off. `testNoGlyphCanBeSubstitutedByTheEmojiFont` guards the family rather than that one character, using `\p{Emoji}` (PCRE2 supports it; it matches `♣` and not `✿`).
 
@@ -227,7 +229,7 @@ Serialization is the sharp edge of this codebase. Anything added to `World` or a
 
 ## Tests
 
-`make test` — 168 tests covering map queries and bounds, cat behaviour end-to-end (walks, eats, turns the flower to grass), snapshot round-trips, headless frame rendering, and the audio (oscillators, mixing, loop length, the feeding of the device against a fake output). The SDL test skips itself when the library is absent, which is the normal outcome in the container. `tests/WorldFactory.php` builds worlds from ASCII rows so nothing depends on the random provider.
+`make test` — 163 tests covering map queries and bounds, cat behaviour end-to-end (walks, eats, turns the flower to grass), snapshot round-trips, headless frame rendering, and the audio (oscillators, mixing, loop length, the feeding of the device against a fake output). `tests/Map/Render/RecordingBackend.php` keeps whole cells rather than just their characters: php-tui's own DummyBackend throws the styles away, which said enough while the map spoke through glyphs and says nothing now that a tile is a colour. The SDL test skips itself when the library is absent, which is the normal outcome in the container. `tests/WorldFactory.php` builds worlds from ASCII rows so nothing depends on the random provider.
 
 `phpunit.xml.dist` fails on warnings, notices and deprecations, but `ignoreIndirectDeprecations` keeps vendor deprecations from failing the suite.
 

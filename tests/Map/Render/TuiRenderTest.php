@@ -15,6 +15,7 @@ use PhpTui\Term\Painter\AnsiPainter;
 use PhpTui\Term\RawMode\TestRawMode;
 use PhpTui\Term\Terminal;
 use PhpTui\Term\Writer\StringWriter;
+use PhpTui\Tui\Display\Backend;
 use PhpTui\Tui\Display\Backend\DummyBackend;
 use PHPUnit\Framework\TestCase;
 use Runtime\Camera;
@@ -52,22 +53,28 @@ final class TuiRenderTest extends TestCase
         self::assertStringContainsString('Carte', $frame);
         self::assertStringContainsString('Journal', $frame);
         self::assertStringContainsString('Temps', $frame);
-        // Terrain is painted as a background colour, so only what stands on
-        // the ground still has a glyph of its own.
-        self::assertStringContainsString('✿', $frame, 'la fleur est dessinee');
-        // The forest is ground and is painted, not written. The club suit it
-        // used to carry is drawn from the colour emoji font on macOS, two
-        // columns wide, which no width measurement in PHP reports.
-        self::assertStringNotContainsString('♣', $frame, 'le sous-bois est peint, pas ecrit');
+
+        // The map carries no writing at all any more: every tile is half a
+        // cell, and the only character on it is the half block itself.
+        self::assertStringContainsString('▀', $frame, 'la carte est faite de demi-blocs');
+        self::assertStringNotContainsString('✿', $frame, 'plus une fleur ecrite');
     }
 
-    public function testThePlayerGlyphIsDrawnOverTheGround(): void
+    /**
+     * A cat is its colour on the map and its shape in the panel. Read as a
+     * string the frame says nothing about the first, so the cells are read
+     * instead.
+     */
+    public function testEachPlayerIsPaintedInItsOwnColour(): void
     {
-        $this->render()->render([['X', '1'], ['X', '2']]);
+        $backend = new RecordingBackend(100, 30);
+        $this->render(backend: $backend)->render([['X', '1'], ['X', '2']]);
 
-        $frame = $this->backend->toString();
-        self::assertStringContainsString('●', $frame, 'le premier chat');
-        self::assertStringContainsString('◆', $frame, 'le second, distinct du premier');
+        $palette = new TilePalette(trueColor: true);
+        $colours = $backend->coloursOverMap(64, 17);
+
+        self::assertArrayHasKey($palette->pixel('1', 1, 0)->toHex(), $colours, 'le premier chat');
+        self::assertArrayHasKey($palette->pixel('2', 1, 1)->toHex(), $colours, 'le second, distinct');
     }
 
     public function testTheControlBarShowsTheTimeState(): void
@@ -186,8 +193,8 @@ final class TuiRenderTest extends TestCase
 
     public function testThePlayableAreaLeavesRoomForTheDashboard(): void
     {
-        // Half as many tiles across as there are columns: a tile spans two.
-        self::assertSame(['x' => 32, 'y' => 17], $this->render()->getSize());
+        // A tile per column, two stacked per row.
+        self::assertSame(['x' => 64, 'y' => 34], $this->render()->getSize());
     }
 
     /**
@@ -228,45 +235,27 @@ final class TuiRenderTest extends TestCase
     }
 
     /**
-     * Half blocks put four times as many tiles on screen — the coverage of
-     * the 1:2 zoom, except that zoom samples and this draws every tile. The
-     * rows must still come out exactly as wide as the screen: it is one
-     * character per cell either way, and that is the invariant a two column
-     * glyph breaks.
+     * A tile is half a cell: one per column, two stacked per row. That is
+     * four times what the two column tile it replaced could show, and the
+     * rows must still come out exactly as wide as the screen — one character
+     * per cell, which is the invariant a two column glyph breaks.
      */
-    public function testTheFineViewHoldsFourTimesAsManyTilesAndStillFitsTheScreen(): void
+    public function testTheMapHoldsATileInEveryHalfCellAndStillFitsTheScreen(): void
     {
-        $render = $this->render(palette: new TilePalette(trueColor: true));
-        $coarse = $render->getSize();
+        $render = $this->render();
 
-        self::assertTrue($render->toggleFine());
-
-        $fine = $render->getSize();
-
-        self::assertSame($coarse['x'] * 2, $fine['x'], 'deux fois plus de tuiles en largeur');
-        self::assertSame($coarse['y'] * 2, $fine['y'], 'et en hauteur');
+        self::assertSame(['x' => 64, 'y' => 34], $render->getSize());
 
         $render->render($this->emptyMap(200, 200));
 
-        foreach (explode("\n", $this->backend->toString()) as $number => $row) {
+        foreach (explode("
+", $this->backend->toString()) as $number => $row) {
             if ('' === $row) {
                 continue;
             }
 
             self::assertSame(100, mb_strwidth($row, 'UTF-8'), sprintf('la ligne %d deborde', $number));
         }
-    }
-
-    /**
-     * Sixteen colours cannot say what the fine view needs: two different tiles
-     * in one cell means a foreground and a background that both carry ground.
-     */
-    public function testTheFineViewIsRefusedWithoutTrueColour(): void
-    {
-        $render = $this->render(palette: new TilePalette(trueColor: false));
-
-        self::assertFalse($render->toggleFine());
-        self::assertFalse($render->isFine());
     }
 
     /**
@@ -329,26 +318,25 @@ final class TuiRenderTest extends TestCase
      */
     public function testACatIsNeverSampledAwayWhenZoomingOut(): void
     {
-        $world = WorldFactory::fromRows(['XX'], chatX: 40, chatY: 24);
         $container = new WorldContainer();
-        $container->setWorld($world);
+        $container->setWorld(WorldFactory::fromRows(['XX'], chatX: 80, chatY: 48));
 
+        $backend = new RecordingBackend(100, 30);
         $camera = new Camera();
-        $render = $this->render(container: $container, camera: $camera);
-        $map = $this->emptyMap(64, 34);
+        $render = $this->render(container: $container, camera: $camera, backend: $backend);
+        $map = $this->emptyMap(128, 68);
+        $cat = (new TilePalette(trueColor: true))->pixel('1', 0, 0)->toHex();
 
         $render->render($map);
 
-        // Counted rather than looked for: the panel draws the same marker, on
-        // purpose, so a cat reads as the same cat in both places.
-        $offScreen = substr_count($this->backend->toString(), '●');
+        self::assertArrayNotHasKey($cat, $backend->coloursOverMap(64, 17), 'hors du champ a 1:1');
 
         $camera->zoomOut();
         $render->render($map);
 
-        self::assertSame(
-            $offScreen + 1,
-            substr_count($this->backend->toString(), '●'),
+        self::assertArrayHasKey(
+            $cat,
+            $backend->coloursOverMap(64, 17),
             'le chat entre dans le champ et survit a l echantillonnage'
         );
     }
@@ -366,7 +354,7 @@ final class TuiRenderTest extends TestCase
         self::assertFalse($render->isOverMap(5, 0), 'la bordure haute');
         self::assertTrue($render->isOverMap(1, 1), 'le premier coin utile');
 
-        // Thirty two tiles of two columns, seventeen rows.
+        // Sixty four columns of one tile, seventeen rows of two.
         self::assertTrue($render->isOverMap(64, 17));
         self::assertFalse($render->isOverMap(65, 17), 'le panneau lateral');
         self::assertFalse($render->isOverMap(64, 18), 'le journal');
@@ -410,21 +398,19 @@ final class TuiRenderTest extends TestCase
         $container = new WorldContainer();
         $container->setWorld(WorldFactory::fromRows(['XX'], chatX: 200, chatY: 120));
 
-        $camera = new Camera();
-        $render = $this->render(container: $container, camera: $camera);
+        $backend = new RecordingBackend(100, 30);
+        $render = $this->render(container: $container, camera: new Camera(), backend: $backend);
         $map = $this->emptyMap(256, 160);
+        $cat = (new TilePalette(trueColor: true))->pixel('1', 0, 0)->toHex();
 
         $render->render($map);
-        $lost = substr_count($this->backend->toString(), '●');
+
+        self::assertArrayNotHasKey($cat, $backend->coloursOverMap(64, 17), 'perdu de vue');
 
         $render->focusOnSelectedPlayer();
         $render->render($map);
 
-        self::assertSame(
-            $lost + 1,
-            substr_count($this->backend->toString(), '●'),
-            'le chat est revenu dans le champ'
-        );
+        self::assertArrayHasKey($cat, $backend->coloursOverMap(64, 17), 'le chat est revenu dans le champ');
     }
 
     /**
@@ -477,13 +463,13 @@ final class TuiRenderTest extends TestCase
         );
     }
 
-    public function testScreenColumnsBecomeCellsTwoAtATime(): void
+    public function testAScreenRowIsWorthTwoTiles(): void
     {
         $render = $this->render();
 
-        self::assertSame([0, 3], $render->toCells(1, 3), 'une colonne ne vaut pas encore une tuile');
-        self::assertSame([1, 0], $render->toCells(2, 0));
-        self::assertSame([-2, -1], $render->toCells(-4, -1));
+        self::assertSame([1, 6], $render->toCells(1, 3), 'une colonne est une tuile, une ligne en vaut deux');
+        self::assertSame([2, 0], $render->toCells(2, 0));
+        self::assertSame([-4, -2], $render->toCells(-4, -1));
     }
 
     /**
@@ -531,6 +517,7 @@ final class TuiRenderTest extends TestCase
         ?SoundBoard $audio = null,
         ?Camera $camera = null,
         ?TilePalette $palette = null,
+        ?Backend $backend = null,
     ): TuiRender {
         $terminal = Terminal::new(
             AnsiPainter::new(StringWriter::new()),
@@ -544,9 +531,12 @@ final class TuiRenderTest extends TestCase
             $container ?? new WorldContainer(),
             $memoryManager ?? new MemoryManager('test'),
             $timeControl ?? new TimeControl(),
-            $this->backend,
+            $backend ?? $this->backend,
             $memoryUsage ?? new MemoryUsage(),
-            palette: $palette,
+            // Pinned rather than detected: TilePalette::detect() reads
+            // COLORTERM, and a frame test that renders different colours
+            // depending on the terminal it runs in asserts nothing.
+            palette: $palette ?? new TilePalette(trueColor: true),
             audio: $audio,
             camera: $camera ?? new Camera(),
         );

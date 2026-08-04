@@ -12,57 +12,17 @@ use PHPUnit\Framework\TestCase;
 
 final class TilePaletteTest extends TestCase
 {
-    public function testTerrainIsPaintedAsABackgroundAndKeepsNoGlyph(): void
-    {
-        $palette = new TilePalette(trueColor: true);
-
-        self::assertSame(' ', $palette->glyph(MapBuilder::HERBE));
-        self::assertSame(' ', $palette->glyph(MapBuilder::EAU));
-        self::assertNotNull($palette->style(MapBuilder::HERBE, 0, 0)->bg);
-        self::assertNotNull($palette->style(MapBuilder::EAU, 0, 0)->bg);
-    }
-
-    public function testWhatStandsOnTheGroundKeepsAGlyph(): void
-    {
-        $palette = new TilePalette(trueColor: true);
-
-        self::assertSame('✿', $palette->glyph(MapBuilder::FLEUR));
-        self::assertSame('×', $palette->glyph(MapBuilder::RONCE), 'une ronce est une plante, pas un sol');
-        self::assertSame(' ', $palette->glyph(MapBuilder::ARBRE), 'un bois est un sol');
-    }
-
     /**
-     * Players are stamped as 1..9 on their own layer. Every cat used to be the
-     * same letter in the same colour, so two of them were indistinguishable.
+     * Everything on the map is a colour now — the ground it stands on and the
+     * thing standing on it alike. A tile is half a cell, and half a character
+     * does not exist.
      */
-    public function testEachPlayerGetsItsOwnGlyphAndColour(): void
+    public function testEveryTileHasAColourOfItsOwn(): void
     {
         $palette = new TilePalette(trueColor: true);
 
-        $glyphs = array_map($palette->glyph(...), ['1', '2', '3', '4']);
-        $colours = array_map(
-            static fn (string $tile): ?string => $palette->style($tile, 0, 0)->fg?->toHex(),
-            ['1', '2', '3', '4']
-        );
-
-        self::assertSame($glyphs, array_unique($glyphs));
-        self::assertSame($colours, array_unique($colours));
-    }
-
-    /**
-     * On the map a glyph must fit exactly one column. An emoji is two columns
-     * wide and would eat its neighbour, shifting the whole row.
-     */
-    public function testMapGlyphsAreOneColumnWide(): void
-    {
-        $palette = new TilePalette(trueColor: true);
-
-        foreach ([MapBuilder::HERBE, MapBuilder::EAU, MapBuilder::ARBRE, MapBuilder::FLEUR, MapBuilder::RONCE, '1', '2', '3', '4'] as $tile) {
-            self::assertSame(
-                1,
-                mb_strwidth($palette->glyph($tile), 'UTF-8'),
-                sprintf('la tuile %s deborde sur sa voisine', $tile)
-            );
+        foreach (MapBuilder::getAllowedItems() as $tile) {
+            self::assertNotSame('', $palette->pixel($tile, 0, 0)->toHex(), sprintf('la tuile %s', $tile));
         }
     }
 
@@ -78,12 +38,9 @@ final class TilePaletteTest extends TestCase
      */
     public function testNoGlyphCanBeSubstitutedByTheEmojiFont(): void
     {
-        $palette = new TilePalette(trueColor: true);
-        $glyphs = [];
-
-        foreach ([MapBuilder::HERBE, MapBuilder::EAU, MapBuilder::ARBRE, MapBuilder::FLEUR, MapBuilder::RONCE] as $tile) {
-            $glyphs[] = $palette->glyph($tile);
-        }
+        // The map has no glyphs left at all — it is drawn in colour. What
+        // remains is the panel, where a cat is still a shape.
+        $glyphs = ['▀'];
 
         for ($player = 0; $player < 9; $player++) {
             $glyphs[] = TilePalette::playerMarker($player);
@@ -99,28 +56,12 @@ final class TilePaletteTest extends TestCase
     }
 
     /**
-     * The panel marker is the map glyph, so a cat reads as the same cat in
-     * both places — and, like everything else here, it is one column wide.
+     * The panel is the one place a cat still has a shape, and like everything
+     * that flows as text it has to be one column wide.
      */
-    public function testThePanelMarkerIsTheMapGlyph(): void
+    public function testThePanelMarkerIsOneColumnWide(): void
     {
-        self::assertSame((new TilePalette(true))->glyph('1'), TilePalette::playerMarker(0));
         self::assertSame(1, mb_strwidth(TilePalette::playerMarker(0), 'UTF-8'));
-    }
-
-    public function testEveryTileIsExactlyTwoColumnsWide(): void
-    {
-        $palette = new TilePalette(trueColor: true);
-
-        foreach ([MapBuilder::HERBE, MapBuilder::EAU, MapBuilder::ARBRE, MapBuilder::FLEUR, MapBuilder::RONCE, '1', '2'] as $tile) {
-            foreach ([[0, 0], [1, 0], [3, 5]] as [$x, $y]) {
-                self::assertSame(
-                    TilePalette::TILE_WIDTH,
-                    mb_strwidth($palette->cell($tile, $x, $y)->content, 'UTF-8'),
-                    sprintf('la tuile %s ne fait pas deux colonnes', $tile)
-                );
-            }
-        }
     }
 
     /**
@@ -235,12 +176,16 @@ final class TilePaletteTest extends TestCase
     {
         $palette = new TilePalette(trueColor: true);
 
-        $backgrounds = array_map(
-            static fn (string $tile): ?string => $palette->style($tile, 0, 0)->bg?->toHex(),
-            [MapBuilder::HERBE, MapBuilder::EAU, MapBuilder::ARBRE, '1']
+        $colours = array_map(
+            static fn (string $tile): string => $palette->pixel($tile, 0, 0)->toHex(),
+            [
+                MapBuilder::HERBE, MapBuilder::EAU, MapBuilder::ARBRE, MapBuilder::FOURRE,
+                MapBuilder::TROU, MapBuilder::RONCE, MapBuilder::FLEUR, MapBuilder::DIGITALE,
+                MapBuilder::ROCHE, MapBuilder::GALERIE, MapBuilder::CHAMPIGNON, '1',
+            ]
         );
 
-        self::assertSame($backgrounds, array_unique($backgrounds));
+        self::assertSame($colours, array_unique($colours), 'rien ne se confond avec rien');
     }
 
     /**

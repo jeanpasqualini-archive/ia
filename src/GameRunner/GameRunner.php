@@ -326,7 +326,6 @@ class GameRunner
             'z' => $this->zoom(closer: true),
             'Z' => $this->zoom(closer: false),
             'c' => $this->focusPlayer(),
-            'f' => $this->toggleFine(),
             InputControllerInterface::UP => $this->look(0, -1),
             InputControllerInterface::DOWN => $this->look(0, 1),
             InputControllerInterface::LEFT => $this->look(-1, 0),
@@ -468,23 +467,6 @@ class GameRunner
     private function focusPlayer(): bool
     {
         if (!$this->render->focusOnSelectedPlayer()) {
-            return false;
-        }
-
-        $this->audio->play(SoundEffect::Blip);
-
-        return true;
-    }
-
-    /**
-     * Half block rendering: four times as many tiles on screen, and no glyphs
-     * left to draw them with.
-     */
-    private function toggleFine(): bool
-    {
-        if (!$this->render->toggleFine()) {
-            $this->logger->log(LogLevel::INFO, '[rendu] la haute resolution demande la couleur vraie');
-
             return false;
         }
 

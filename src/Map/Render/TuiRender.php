@@ -69,12 +69,6 @@ class TuiRender implements MapRenderInterface
     private int $activeTab = 0;
 
     /**
-     * Half block rendering: a tile becomes half a cell instead of two columns,
-     * which puts four times as many of them on screen.
-     */
-    private bool $fine = false;
-
-    /**
      * Screen row of the "centre the view" button, recorded while the panel is
      * built rather than worked out afterwards. Computing it from the layout a
      * second time is how a button ends up one row away from where it is drawn.
@@ -153,33 +147,6 @@ class TuiRender implements MapRenderInterface
         }
     }
 
-    /**
-     * Twice the tiles across and twice down, drawn as upper half blocks: the
-     * top tile is the foreground colour and the bottom one the background.
-     *
-     * It is the same ground the 1:2 zoom covers, except that zoom *samples* —
-     * it throws away three tiles in four — and this draws all of them. What
-     * it costs is the glyphs: a character fills a whole cell, so at half a
-     * cell per tile a flower has only its colour left to speak with.
-     *
-     * Refused without true colour, where the shades it needs do not exist.
-     */
-    public function toggleFine(): bool
-    {
-        if (!$this->palette->hasTrueColor()) {
-            return false;
-        }
-
-        $this->fine = !$this->fine;
-
-        return true;
-    }
-
-    public function isFine(): bool
-    {
-        return $this->fine;
-    }
-
     public function selectTab(int $index): void
     {
         if ($index >= 0 && $index < count($this->players())) {
@@ -205,18 +172,11 @@ class TuiRender implements MapRenderInterface
         $cols = $size instanceof Size ? $size->cols : 80;
         $lines = $size instanceof Size ? $size->lines : 24;
 
-        $width = $cols - self::SIDEBAR_WIDTH - 2;
-        $height = $lines - self::LOG_HEIGHT - self::CONTROL_HEIGHT - 2;
-
-        // A tile spans two columns, so a row holds half as many of them —
-        // unless it is half a cell, in which case a row holds twice as many
-        // and there are two rows of tiles per row of cells.
-        return $this->fine
-            ? ['x' => max(10, $width), 'y' => max(10, $height * 2)]
-            : [
-                'x' => max(10, intdiv($width, TilePalette::TILE_WIDTH)),
-                'y' => max(10, $height),
-            ];
+        // A tile is half a cell: one per column, two stacked per row.
+        return [
+            'x' => max(10, $cols - self::SIDEBAR_WIDTH - 2),
+            'y' => max(10, ($lines - self::LOG_HEIGHT - self::CONTROL_HEIGHT - 2) * 2),
+        ];
     }
 
     /**
@@ -231,23 +191,19 @@ class TuiRender implements MapRenderInterface
 
         return $column >= 1
             && $row >= 1
-            && $column <= ($this->fine ? $view['x'] : $view['x'] * TilePalette::TILE_WIDTH)
-            && $row <= ($this->fine ? intdiv($view['y'], 2) : $view['y']);
+            && $column <= $view['x']
+            && $row <= intdiv($view['y'], 2);
     }
 
     /**
-     * Screen columns and rows turned into cells. A tile spans two columns, so
-     * a one column drag is worth nothing — the caller keeps its anchor until
-     * the movement adds up, otherwise a slow horizontal drag would round to
-     * zero for ever and feel stuck.
+     * Screen columns and rows turned into tiles. A column is a tile and a row
+     * is two of them, so a drag never rounds away to nothing.
      *
      * @return array{int, int}
      */
     public function toCells(int $columns, int $rows): array
     {
-        return $this->fine
-            ? [$columns, $rows * 2]
-            : [intdiv($columns, TilePalette::TILE_WIDTH), $rows];
+        return [$columns, $rows * 2];
     }
 
     /**
@@ -738,10 +694,8 @@ class TuiRender implements MapRenderInterface
 
         $lines = [];
 
-        // Two rows of tiles per row of cells in the fine view, one otherwise.
-        $step = $this->fine ? 2 : 1;
-
-        for ($row = 0; $row < $view['y']; $row += $step) {
+        // Two rows of tiles per row of cells.
+        for ($row = 0; $row < $view['y']; $row += 2) {
             $worldY = $originY + $row * $scale;
 
             if ($worldY >= $height) {
@@ -757,14 +711,9 @@ class TuiRender implements MapRenderInterface
                     break;
                 }
 
-                $spans[] = $this->fine
-                    ? $this->halfBlock($map, $players, $sightEdge, $row, $column, $originX, $originY, $scale, $width, $height)
-                    : $this->palette->cell(
-                        $players[$row][$column] ?? $map[$worldY][$worldX] ?? MapBuilder::HERBE,
-                        $worldX,
-                        $worldY,
-                        isset($sightEdge[$worldY * $width + $worldX])
-                    );
+                $spans[] = $this->halfBlock(
+                    $map, $players, $sightEdge, $row, $column, $originX, $originY, $scale, $width, $height
+                );
             }
 
             $lines[] = Line::fromSpans(...$spans);
@@ -844,10 +793,9 @@ class TuiRender implements MapRenderInterface
     private function mapTitle(array $map): string
     {
         return sprintf(
-            '%s %s%s  %d;%d de %dx%d  (fleches, z/Z, f)',
+            '%s %s  %d;%d de %dx%d  (fleches, z/Z)',
             World::SOUTERRAIN === $this->selectedPlayer()?->getNiveau() ? 'Souterrain' : 'Carte',
             $this->camera->label(),
-            $this->fine ? ' fin' : '',
             $this->camera->y(),
             $this->camera->x(),
             count($map[0] ?? []),
