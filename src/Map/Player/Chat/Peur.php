@@ -49,6 +49,16 @@ final class Peur implements CostBiasInterface
      */
     private const LEARNING_RATE = 0.4;
 
+    /**
+     * The rate for something swallowed.
+     *
+     * Deliberately near one: a poisoned meal is learnt in a single trial,
+     * far faster than any other association, and that asymmetry is real
+     * rather than a convenience — an animal that needed to be poisoned twice
+     * to learn would usually not get the chance.
+     */
+    private const TASTE_RATE = 0.95;
+
     /** Ticks between two rounds of forgetting. */
     private const FADING_RATE = 25;
 
@@ -96,16 +106,42 @@ final class Peur implements CostBiasInterface
     /**
      * @param list<string> $cues
      */
-    public function remember(array $cues, float $pain): void
+    public function remember(array $cues, float $pain, bool $swallowed = false): void
     {
         // Moved towards the error, not towards the pain. That single
         // difference is what makes the cues compete instead of all of them
         // learning the same thing.
         $error = $pain - $this->expect($cues);
 
+        $rate = $swallowed ? self::TASTE_RATE : self::LEARNING_RATE;
+
         foreach ($cues as $cue) {
-            $this->weights[$cue] = max(0.0, ($this->weights[$cue] ?? 0.0) + self::LEARNING_RATE * $error);
+            $weight = ($this->weights[$cue] ?? 0.0) + $rate * $this->salience($cue, $swallowed) * $error;
+            $this->weights[$cue] = max(0.0, $weight);
         }
+    }
+
+    /**
+     * How readily a cue takes the blame, which depends on how the pain
+     * arrived.
+     *
+     * Not every cue is equally believable as a cause, and animals are not
+     * neutral about it: illness after eating binds to what was *tasted* and
+     * barely at all to where it happened, while a physical injury binds to
+     * the place as readily as to the thing. That asymmetry is Garcia and
+     * Koelling's, from 1966, and it is not a refinement — without it the
+     * region of a poisoned meal became as dear as the plant, which made the
+     * good flowers growing beside it expensive too. Measured over six
+     * thousand ticks, a cat that already knew ate six more foxgloves with a
+     * real flower within reach.
+     */
+    private function salience(string $cue, bool $swallowed): float
+    {
+        if (!$swallowed) {
+            return 1.0;
+        }
+
+        return str_starts_with($cue, 'sol:') ? 1.0 : 0.15;
     }
 
     /**

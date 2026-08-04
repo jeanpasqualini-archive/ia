@@ -46,6 +46,12 @@ visible à tous les niveaux de zoom, même quand une cellule représente
 soixante-quatre tuiles. Chaque chat ne voit qu'à vingt-cinq cases autour de
 lui : quand il n'a pas de fleur en vue, il part explorer.
 
+Toutes les fleurs ne se mangent pas : la digitale ressemble aux autres et
+empoisonne. Un chat doit en goûter une pour l'apprendre — et il l'apprend d'un
+seul coup, bien plus vite qu'une griffure, en blâmant la plante et non
+l'endroit où elle poussait. Ensuite il fait le tour. Sauf s'il n'a rien d'autre
+à manger, auquel cas il la mange quand même.
+
 Des ronces poussent en couronne autour des parterres de fleurs : elles ne
 coûtent rien à traverser, mais elles piquent. Un chat qui s'y blesse s'en
 souvient et fait le tour la fois suivante — c'est de l'anticipation, pas une

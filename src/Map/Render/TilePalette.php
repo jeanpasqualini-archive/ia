@@ -64,6 +64,13 @@ class TilePalette
     private const THORN = '#2f2119';
 
     /**
+     * The foxglove. A cold colour among the warm blooms, because the player
+     * has to be able to tell them apart at a glance — the cat is the one
+     * meant to find out the hard way.
+     */
+    private const POISON = '#8fd0e8';
+
+    /**
      * The far edge of what a cat can see.
      *
      * One flat colour whatever is underneath, because it is an overlay and
@@ -123,6 +130,7 @@ class TilePalette
             // otherwise. A canopy is better read as a dark mass anyway.
             MapBuilder::HERBE, MapBuilder::EAU, MapBuilder::ARBRE => ' ',
             MapBuilder::FLEUR => '✿',
+            MapBuilder::DIGITALE => '❀',
             MapBuilder::RONCE => '×',
             default => $tile,
         };
@@ -210,6 +218,9 @@ class TilePalette
             // and no foreground at all.
             MapBuilder::HERBE, MapBuilder::EAU, MapBuilder::ARBRE => Style::default()
                 ->bg($this->shade($tile, $variant)),
+            MapBuilder::DIGITALE => Style::default()
+                ->bg($this->shade(MapBuilder::HERBE, $variant))
+                ->fg(RgbColor::fromHex(self::POISON)),
             // Standing in the meadow, like the flower it grows beside.
             MapBuilder::RONCE => Style::default()
                 ->bg($this->shade(MapBuilder::HERBE, $variant))
@@ -246,6 +257,7 @@ class TilePalette
             MapBuilder::EAU => Style::default()->bg(AnsiColor::Blue)->fg(AnsiColor::Blue),
             MapBuilder::RONCE => Style::default()->bg(AnsiColor::LightGreen)->fg(AnsiColor::Black),
             MapBuilder::FLEUR => Style::default()->bg(AnsiColor::LightGreen)->fg(AnsiColor::Magenta),
+            MapBuilder::DIGITALE => Style::default()->bg(AnsiColor::LightGreen)->fg(AnsiColor::LightCyan),
             default => null === self::playerIndex($tile)
                 ? Style::default()
                 : Style::default()->bg(AnsiColor::Black)->fg(match (self::playerIndex($tile) % 4) {

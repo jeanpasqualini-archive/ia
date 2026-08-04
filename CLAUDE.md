@@ -43,6 +43,15 @@ Forgetting is half the behaviour, not housekeeping: a fear that never faded woul
 
 **Brambles grow as a collar around the flowers**, which is a correction worth remembering. They were first cut from the trough of the same noise field whose peaks grow flowers — prettier, and useless: they ended up exactly where flowers were not, so a cat walking to its food walked away from them. Measured over four thousand ticks on four maps, a single seed produced one sting and the whole mechanism was unreachable. Around the food, they are the first thing in this world a cat has to weigh.
 
+**The foxglove is the second thing to learn, and it needed no new machinery.** `MapBuilder::NOURRITURE` lists what a hungry cat will walk to; only `FLEUR` feeds it, `DIGITALE` poisons. The tiles *are* distinguishable, so the plant can be learnt — the cat simply does not know yet, and has to taste one. Foxgloves are drawn per tile inside the flower patches rather than cut from a field of their own: scattered among the blooms, the only thing that predicts a meal is which flower it is; grown in patches, the *place* would predict it just as well and a cat would learn the map instead of the plant.
+
+Two asymmetries make it behave like an animal rather than like a table, and both are borrowed rather than invented:
+
+- **A poisoned meal is learnt in one trial** (`Peur::TASTE_RATE`, near one, against 0.4 for a scratch). An animal that needed poisoning twice usually did not get the chance.
+- **Illness binds to what was tasted, hardly at all to where it happened** (`Peur::salience()`, Garcia and Koelling 1966), while an injury binds to the place as readily as to the thing. This is not a refinement: without it the region of a poisoned meal became as dear as the plant, so the good flowers growing beside it were avoided too. Measured over six thousand ticks, a cat that already knew still ate six more foxgloves with a real flower within reach; with it, two.
+
+What remains is the right behaviour rather than a failure: a cat still eats a foxglove out of ignorance the first time, and still eats one when it is the only food in range. That second case is the first genuine dilemma in this world, and it is where a second drive would start to earn its place.
+
 There is deliberately **no death**. A cat that died would have to leave the world, the AI panel and the tab selection, and mortality is not what pain is for: `life` is the running account of how much of it was taken — which is what makes a wary cat measurably better off than a reckless one — and it heals slowly so the account is about recent experience.
 
 ## Running
@@ -196,7 +205,7 @@ Serialization is the sharp edge of this codebase. Anything added to `World` or a
 
 ## Tests
 
-`make test` — 154 tests covering map queries and bounds, cat behaviour end-to-end (walks, eats, turns the flower to grass), snapshot round-trips, headless frame rendering, and the audio (oscillators, mixing, loop length, the feeding of the device against a fake output). The SDL test skips itself when the library is absent, which is the normal outcome in the container. `tests/WorldFactory.php` builds worlds from ASCII rows so nothing depends on the random provider.
+`make test` — 158 tests covering map queries and bounds, cat behaviour end-to-end (walks, eats, turns the flower to grass), snapshot round-trips, headless frame rendering, and the audio (oscillators, mixing, loop length, the feeding of the device against a fake output). The SDL test skips itself when the library is absent, which is the normal outcome in the container. `tests/WorldFactory.php` builds worlds from ASCII rows so nothing depends on the random provider.
 
 `phpunit.xml.dist` fails on warnings, notices and deprecations, but `ignoreIndirectDeprecations` keeps vendor deprecations from failing the suite.
 

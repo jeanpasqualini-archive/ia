@@ -19,11 +19,41 @@ class MapBuilder
     public const FLEUR = 'F';
     public const RONCE = 'R';
 
+    /**
+     * Foxglove: a flower like any other to look at, and poisonous to eat.
+     *
+     * It is what gives a cat something to learn that is not pain from the
+     * ground. It cannot be told from food before being tasted, which is the
+     * point — the tile *is* distinguishable, so the cat can learn which is
+     * which, it simply does not know yet.
+     */
+    public const DIGITALE = 'D';
+
+    /**
+     * What a cat will walk to when hungry. Both look like a meal; only one
+     * is.
+     *
+     * @var list<string>
+     */
+    public const NOURRITURE = [self::FLEUR, self::DIGITALE];
+
     public const LAYER_MAP = 'map';
     public const LAYER_PLAYER = 'player';
 
     /** @var list<string> */
-    private const ALLOWED_ITEMS = [self::HERBE, self::ARBRE, self::EAU, self::FLEUR, self::RONCE];
+    private const ALLOWED_ITEMS = [
+        self::HERBE, self::ARBRE, self::EAU, self::FLEUR, self::RONCE, self::DIGITALE,
+    ];
+
+    /**
+     * What eating a tile gives: food on the left, damage on the right.
+     *
+     * @var array<string, array{int, int}>
+     */
+    private const EATING = [
+        self::FLEUR => [10, 0],
+        self::DIGITALE => [0, 3],
+    ];
 
     /**
      * Damage taken for standing on a tile.
@@ -50,6 +80,7 @@ class MapBuilder
         self::HERBE => 1,
         self::FLEUR => 1,
         self::RONCE => 1,
+        self::DIGITALE => 1,
         self::ARBRE => 3,
         self::EAU => null,
     ];
@@ -178,6 +209,18 @@ class MapBuilder
         return array_key_exists($tile, self::COSTS) ? self::COSTS[$tile] : 1;
     }
 
+    /** Nourishment from eating what stands on this tile. */
+    public function nourishment(Point $point): int
+    {
+        return (self::EATING[$this->getItem($point) ?? ''] ?? [0, 0])[0];
+    }
+
+    /** Damage from eating what stands on this tile. */
+    public function poison(Point $point): int
+    {
+        return (self::EATING[$this->getItem($point) ?? ''] ?? [0, 0])[1];
+    }
+
     /**
      * The terrain tile at raw coordinates, without going through a Point.
      * Read on every tile a search expands, so it stays allocation free.
@@ -244,7 +287,7 @@ class MapBuilder
     }
 
     /**
-     * Tiles holding $item, as flat [y, x] pairs.
+     * Tiles holding $item — one kind or several — as flat [y, x] pairs.
      *
      * A centre and a range restrict the sweep to what a searcher could
      * possibly reach. Scanning the whole map to keep the handful of tiles
@@ -253,8 +296,9 @@ class MapBuilder
      *
      * @return list<array{int, int}>
      */
-    public function positionsOf(string $item, ?Point $around = null, ?int $range = null): array
+    public function positionsOf(string|array $item, ?Point $around = null, ?int $range = null): array
     {
+        $wanted = array_flip((array) $item);
         $found = [];
 
         $top = 0;
@@ -271,7 +315,7 @@ class MapBuilder
 
         for ($y = $top; $y <= $bottom; $y++) {
             for ($x = $left; $x <= $right; $x++) {
-                if (($this->layers[self::LAYER_MAP][$y][$x] ?? null) === $item) {
+                if (isset($wanted[$this->layers[self::LAYER_MAP][$y][$x] ?? ''])) {
                     $found[] = [$y, $x];
                 }
             }

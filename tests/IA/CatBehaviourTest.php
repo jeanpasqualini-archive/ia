@@ -134,6 +134,47 @@ final class CatBehaviourTest extends TestCase
     }
 
     /**
+     * The foxglove is what a cat cannot tell from a meal until it has eaten
+     * one. Having eaten one, it should walk past the next and take the longer
+     * way to a real flower.
+     */
+    public function testACatPoisonedOnceWalksPastTheNextFoxglove(): void
+    {
+        // Three rows, so there is a way round. On a single row the flower
+        // sits *behind* the foxglove and walking to it means stepping on the
+        // thing being avoided — the cat then rightly eats the near one, and
+        // the test would be measuring the map rather than the memory.
+        $world = WorldFactory::fromRows([
+            'XXXXXX',
+            'XDXDXF',
+            'XXXXXX',
+        ], chatX: 2, chatY: 1);
+        $chat = WorldFactory::chat($world);
+        $chat->getEstomac()->setNouriture(0);
+
+        for ($tick = 0; $tick < 4; $tick++) {
+            $world->update();
+        }
+
+        self::assertGreaterThan(0.0, $chat->getPeur()->expect(['sol:D']), 'il a goute, il sait');
+        self::assertLessThan(10, $chat->getLife(), 'et il l a paye');
+
+        $map = $world->getMap();
+
+        // Run until the real flower is gone. What matters is the order: the
+        // cat walks past the foxglove next to it to reach the flower further
+        // away. Left long enough it will eat that foxglove too, once there is
+        // nothing else — which is the right call for a hungry animal and not
+        // what is being tested here.
+        for ($tick = 0; $tick < 30 && [] !== $map->positionsOf(MapBuilder::FLEUR); $tick++) {
+            $world->update();
+        }
+
+        self::assertCount(0, $map->positionsOf(MapBuilder::FLEUR), 'la vraie fleur a ete mangee');
+        self::assertCount(1, $map->positionsOf(MapBuilder::DIGITALE), 'et la digitale voisine etait encore la');
+    }
+
+    /**
      * A cat only sees so far, so on a map larger than its sight it will often
      * have nothing to walk towards. Standing still would read as a broken cat
      * rather than as a hungry one.

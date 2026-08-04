@@ -9,6 +9,7 @@ use Map\Location\Point;
 use Map\Path\CostBiasInterface;
 use Map\Path\PathFinder;
 use Map\Path\Route;
+use Map\Player\Chat\Peur;
 use Map\Player\PlayerHasEstomac;
 use Map\Player\PlayerHasPeur;
 use Map\World\World;
@@ -19,8 +20,6 @@ use Psr\Log\LogLevel;
  */
 class Manger implements ObjectifInterface
 {
-    private const NOURISHMENT = 10;
-
     /**
      * Ticks to wait before looking again when the cat can neither see food
      * nor walk anywhere.
@@ -108,9 +107,10 @@ class Manger implements ObjectifInterface
 
     private function eat(World $world): bool
     {
+        $map = $world->getMap();
         $destination = $this->route?->getDestination();
 
-        if (null === $destination || MapBuilder::FLEUR !== $world->getMap()->getItem($destination)) {
+        if (null === $destination || !in_array($map->getItem($destination), MapBuilder::NOURRITURE, true)) {
             return false;
         }
 
@@ -120,15 +120,53 @@ class Manger implements ObjectifInterface
             return false;
         }
 
+        $food = $map->nourishment($destination);
+        $poison = $map->poison($destination);
+
+        // Read before the flower is taken away: the cues are what was there
+        // at the moment of the meal, and one of them is the flower itself.
+        $cues = Peur::cues($map, $destination->getX(), $destination->getY());
+
+        $map->setItem($destination, MapBuilder::HERBE);
+
+        if ($poison > 0) {
+            $this->poisoned($world, $cues, $poison);
+
+            return true;
+        }
+
         $world->getLogger()->log(LogLevel::INFO, 'le chat mange');
 
         $this->player->getEstomac()->setNouriture(
-            $this->player->getEstomac()->getNouriture() + self::NOURISHMENT
+            $this->player->getEstomac()->getNouriture() + $food
         );
 
-        $world->getMap()->setItem($destination, MapBuilder::HERBE);
-
         return true;
+    }
+
+    /**
+     * A flower that turned out not to be one.
+     *
+     * Learnt as a single trial rather than gradually: an animal poisoned by
+     * something it ate does not usually get a second chance to average the
+     * experience out, and it is the one association that reliably forms in
+     * one go.
+     *
+     * @param list<string> $cues
+     */
+    private function poisoned(World $world, array $cues, int $poison): void
+    {
+        $taken = $this->player->hurt($poison);
+
+        $world->getLogger()->log(LogLevel::INFO, sprintf(
+            '[poison] %s recrache une digitale, vie %d',
+            $this->player->getIdentifiant(),
+            $this->player->getLife(),
+        ), ['pid' => $this->player->getIdentifiant()]);
+
+        if ($this->player instanceof PlayerHasPeur) {
+            $this->player->getPeur()->remember($cues, (float) $taken, swallowed: true);
+        }
     }
 
     private function findFood(World $world): ?Route
@@ -143,7 +181,7 @@ class Manger implements ObjectifInterface
         // it has been stung by is dear to it and cheap to everyone else.
         $steps = (new PathFinder($world->getMap(), $this->bias()))->toNearest(
             $this->player->getPosition(),
-            MapBuilder::FLEUR,
+            MapBuilder::NOURRITURE,
             $this->player->getVision()
         );
 

@@ -47,6 +47,17 @@ class TerrainMapProvider implements MapProviderInterface
      */
     public const BRAMBLE_SHARE = 0.06;
 
+    /**
+     * Share of the flowers that are foxgloves — beautiful, and poisonous.
+     *
+     * Drawn per tile rather than cut from a field on purpose: scattered
+     * *within* the patches, the only thing that predicts whether a flower is
+     * a meal is which flower it is. Grown in their own patches, the place
+     * would predict it just as well and the cat would learn the map instead
+     * of the plant.
+     */
+    public const POISON_SHARE = 0.3;
+
     /** Distance between two control points of the coarsest octave, in tiles. */
     private const BASE_CELL = 12;
 
@@ -113,7 +124,7 @@ class TerrainMapProvider implements MapProviderInterface
             for ($x = 0; $x < $this->columns; $x++) {
                 $row .= match (true) {
                     MapBuilder::HERBE !== $tiles[$y][$x] => $tiles[$y][$x],
-                    $bloom[$y][$x] >= $bloomLevel => MapBuilder::FLEUR,
+                    $bloom[$y][$x] >= $bloomLevel => $this->bloom(),
                     $bloom[$y][$x] >= $brambleLevel => MapBuilder::RONCE,
                     default => $tiles[$y][$x],
                 };
@@ -123,6 +134,16 @@ class TerrainMapProvider implements MapProviderInterface
         }
 
         return $map;
+    }
+
+    /**
+     * A flower, or the foxglove that looks like one.
+     */
+    private function bloom(): string
+    {
+        return $this->randomizer->getInt(1, 1000) <= (int) (self::POISON_SHARE * 1000)
+            ? MapBuilder::DIGITALE
+            : MapBuilder::FLEUR;
     }
 
     /**

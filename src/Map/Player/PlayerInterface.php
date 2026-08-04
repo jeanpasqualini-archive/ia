@@ -19,6 +19,11 @@ interface PlayerInterface
      */
     public function getVision(): int;
 
+    /**
+     * Take damage, and answer how much actually landed.
+     */
+    public function hurt(int $amount): int;
+
     public function getIa(): IAInterface;
 
     public function update(World $world): void;

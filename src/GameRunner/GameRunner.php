@@ -565,7 +565,7 @@ class GameRunner
      */
     private function watchForEating(): void
     {
-        $flowers = count($this->world->getMap()->positionsOf(MapBuilder::FLEUR));
+        $flowers = count($this->world->getMap()->positionsOf(MapBuilder::NOURRITURE));
 
         if ($flowers < $this->flowers) {
             $this->audio->play(SoundEffect::Eat);
@@ -663,7 +663,7 @@ class GameRunner
         // A new map, or a jump back through the time machine, moves the
         // flower count by any amount at all. Rebasing it here is what stops
         // that from being heard as a meal.
-        $this->flowers = count($world->getMap()->positionsOf(MapBuilder::FLEUR));
+        $this->flowers = count($world->getMap()->positionsOf(MapBuilder::NOURRITURE));
     }
 
     private function createWorld(): World

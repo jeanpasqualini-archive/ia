@@ -125,6 +125,60 @@ final class PeurTest extends TestCase
         );
     }
 
+    /**
+     * A poisoned meal is learnt in one go, where a scratch is learnt little
+     * by little. The animal that needed poisoning twice usually did not get
+     * the chance.
+     */
+    public function testSomethingSwallowedIsLearntInASingleTrial(): void
+    {
+        $scratched = new Peur();
+        $scratched->remember(['sol:R'], 1.0);
+
+        $poisoned = new Peur();
+        $poisoned->remember(['sol:D'], 1.0, swallowed: true);
+
+        self::assertGreaterThan(
+            $scratched->expect(['sol:R']),
+            $poisoned->expect(['sol:D'])
+        );
+    }
+
+    /**
+     * Garcia and Koelling, 1966: illness binds to what was tasted and barely
+     * at all to where it happened, while an injury binds to the place as
+     * readily as to the thing.
+     *
+     * Without it the region of a poisoned meal became as dear as the plant,
+     * so the good flowers growing beside it were avoided too — measured, a
+     * cat that already knew still ate six more foxgloves with a real flower
+     * within reach.
+     */
+    public function testAPoisonBlamesThePlantAndNotThePlace(): void
+    {
+        $poisoned = new Peur();
+        $poisoned->remember(['sol:D', 'lieu:4,4'], 3.0, swallowed: true);
+
+        self::assertGreaterThan(
+            5 * $poisoned->expect(['lieu:4,4']),
+            $poisoned->expect(['sol:D']),
+            'la plante porte le blame, pas le pre ou elle poussait'
+        );
+    }
+
+    public function testAnInjuryBlamesTheePlaceAsReadilyAsTheGround(): void
+    {
+        $stung = new Peur();
+        $stung->remember(['sol:R', 'lieu:4,4'], 1.0);
+
+        self::assertEqualsWithDelta(
+            $stung->expect(['sol:R']),
+            $stung->expect(['lieu:4,4']),
+            0.001,
+            'une griffure ne choisit pas entre la ronce et l endroit'
+        );
+    }
+
     public function testFearIsPricedAsADetourRatherThanAsAWall(): void
     {
         $map = new MapBuilder(['XXX', 'XRX', 'XXX']);

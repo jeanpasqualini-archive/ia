@@ -64,8 +64,8 @@ class PathFinder
     }
 
     /**
-     * Route to the closest reachable tile holding $item, excluding the
-     * starting tile. Null when no such tile can be reached.
+     * Route to the closest reachable tile holding $item — one kind or any of
+     * several — excluding the starting tile. Null when none can be reached.
      *
      * $range bounds the search to what the searcher can see, in tiles. That
      * is what lets the map grow without the simulation slowing down: an
@@ -74,7 +74,7 @@ class PathFinder
      *
      * @return list<Point>|null
      */
-    public function toNearest(Point $from, string $item, ?int $range = null): ?array
+    public function toNearest(Point $from, string|array $item, ?int $range = null): ?array
     {
         // Goals are looked up by index rather than re-read from the map on
         // every expanded tile. The sweep that collects them is bounded too:

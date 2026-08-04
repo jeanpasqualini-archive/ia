@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace IA;
 
 use Map\Player\Chat\Peur;
-use Map\Player\Player;
 use Map\Player\PlayerHasPeur;
 use Map\Player\PlayerInterface;
 use Map\World\World;
@@ -53,7 +52,7 @@ class ApplicationIA implements IAInterface
         $position = $player->getPosition();
         $damage = $map->hurts($position);
 
-        if (0 === $damage || !$player instanceof Player) {
+        if (0 === $damage) {
             return;
         }
 
