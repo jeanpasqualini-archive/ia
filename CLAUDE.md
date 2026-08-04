@@ -29,6 +29,22 @@ Two things to settle before writing any of it:
 
 A cat is tractable because it has **one** drive, which is also why a learner would currently have nothing to learn — the `match` in `CatIA` is already optimal. The interesting boundary is the *second* drive (sleep, warmth, fear, curiosity): the moment two needs compete for the same tick, hand-written rules become a pile of `if`s nobody can tune, and arbitration is what a policy is actually good at.
 
+## Fear: a price the cat adds itself
+
+Fear here is not a behaviour and has no `Objectif`. It is the gap between what the world charges and what a cat believes it charges: `MapBuilder::COSTS` prices a bramble at one, like grass, and a cat that has been stung routes as though it cost twelve. **Nothing in the pathfinder changes — it is handed a different price list** (`Map\Path\CostBiasInterface`, implemented by `Peur`), so the avoidance appears *before* the next sting, which is what makes it anticipation rather than reaction. Brambles must stay objectively cheap: priced high in `COSTS`, every cat would route round them from birth and there would be nothing to learn.
+
+**A cat does not choose what to blame.** Asked whether it remembers the bramble, the place or the individual, the answer is that it remembers whatever was present, and each cue takes a share. The update rule is Rescorla and Wagner's (1972) and is one line — every cue present moves by the part of the pain that was *not* predicted — which is what makes cues compete: a cue that already predicts the sting leaves little error for the others, so a familiar danger in a new place teaches almost nothing about the place (*blocking*, and there is a test named after it). Stung on brambles in many places, the terrain cue is reinforced every time while each place fades alone, so the memory generalises. Stung repeatedly in one place over varied ground, the place wins. **The level of abstraction is never chosen; it is selected by the statistics of what happened.**
+
+Place cues are deliberately coarse (`Peur::REGION`, eight tiles). An exact tile on a map of forty thousand is a memory the cat will never be in a position to use again, and animals learn a context rather than a point.
+
+Forgetting is half the behaviour, not housekeeping: a fear that never faded would keep a cat off a terrain for life over one scratch, with no way to find out it had changed.
+
+**The range is what a cat can see; the bias is what it prefers, and the two must never be added together.** Conflated, a cat that fears a path stops *seeing* the food at the end of it — it was written that way first and the flower simply vanished. `PathFinder::flood()` therefore carries two costs: `$reach`, what the world charges, which is the only thing the budget is measured against, and `$best`, which adds the fear and is what the expansion is ordered by. `testABiasDoesNotShortenTheSightLine` guards it.
+
+**Brambles grow as a collar around the flowers**, which is a correction worth remembering. They were first cut from the trough of the same noise field whose peaks grow flowers — prettier, and useless: they ended up exactly where flowers were not, so a cat walking to its food walked away from them. Measured over four thousand ticks on four maps, a single seed produced one sting and the whole mechanism was unreachable. Around the food, they are the first thing in this world a cat has to weigh.
+
+There is deliberately **no death**. A cat that died would have to leave the world, the AI panel and the tab selection, and mortality is not what pain is for: `life` is the running account of how much of it was taken — which is what makes a wary cat measurably better off than a reckless one — and it heals slowly so the account is about recent experience.
+
 ## Running
 
 ```bash
@@ -180,7 +196,7 @@ Serialization is the sharp edge of this codebase. Anything added to `World` or a
 
 ## Tests
 
-`make test` — 143 tests covering map queries and bounds, cat behaviour end-to-end (walks, eats, turns the flower to grass), snapshot round-trips, headless frame rendering, and the audio (oscillators, mixing, loop length, the feeding of the device against a fake output). The SDL test skips itself when the library is absent, which is the normal outcome in the container. `tests/WorldFactory.php` builds worlds from ASCII rows so nothing depends on the random provider.
+`make test` — 154 tests covering map queries and bounds, cat behaviour end-to-end (walks, eats, turns the flower to grass), snapshot round-trips, headless frame rendering, and the audio (oscillators, mixing, loop length, the feeding of the device against a fake output). The SDL test skips itself when the library is absent, which is the normal outcome in the container. `tests/WorldFactory.php` builds worlds from ASCII rows so nothing depends on the random provider.
 
 `phpunit.xml.dist` fails on warnings, notices and deprecations, but `ignoreIndirectDeprecations` keeps vendor deprecations from failing the suite.
 

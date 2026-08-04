@@ -4,10 +4,8 @@ declare(strict_types=1);
 
 namespace Map\Player;
 
-use Map\Gun\GunInterface;
 use Map\Location\Point;
 use Map\World\World;
-use RuntimeException;
 
 abstract class Player implements PlayerInterface
 {
@@ -15,11 +13,20 @@ abstract class Player implements PlayerInterface
 
     private const FOODS = ['burger', 'salad', 'tomato', 'oignon'];
 
+    public const MAX_LIFE = 10;
+
+    /** Ticks between two points of life coming back. */
+    private const HEALING_RATE = 40;
+
     protected string $identifiant;
 
     protected Point $position;
 
-    protected int $life = 10;
+    /**
+     * A running account of how much pain has been taken, not a countdown to
+     * dying. See update() for why there is no death.
+     */
+    protected int $life = self::MAX_LIFE;
 
     protected int $resistance = 0;
 
@@ -85,15 +92,30 @@ abstract class Player implements PlayerInterface
         return $this->resistance;
     }
 
-    public function attackBy(GunInterface $gun): void
+    /**
+     * Take damage, and answer how much actually landed. Nothing goes below
+     * zero: a wound that cannot be felt is not a wound.
+     */
+    public function hurt(int $amount): int
     {
-        $this->setLife($this->getLife() - ($gun->getPuissance() - $this->getResistance()));
+        $taken = max(0, min($amount - $this->resistance, $this->life));
+        $this->life -= $taken;
+
+        return $taken;
     }
 
     public function update(World $world): void
     {
-        if ($this->life <= 1) {
-            throw new RuntimeException(sprintf('%s est mort', $this->identifiant));
+        // There is deliberately no death. A cat that died would have to leave
+        // the world, the AI panel and the tab selection, and mortality is not
+        // what pain is here for — life is the running account of how much of
+        // it was taken, which is what makes a wary cat measurably better off
+        // than a reckless one.
+        //
+        // It heals slowly so that account is about recent experience rather
+        // than about the whole run.
+        if ($this->life < self::MAX_LIFE && $world->getTimer()->isTime(self::HEALING_RATE)) {
+            $this->life++;
         }
     }
 }

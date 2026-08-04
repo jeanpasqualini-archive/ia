@@ -10,7 +10,9 @@ use Logger\BufferLogger;
 use Logger\MultipleLogger;
 use Map\Builder\MapBuilder;
 use Map\Path\PathFinder;
+use Map\Player\Chat\Peur;
 use Map\Player\PlayerHasEstomac;
+use Map\Player\PlayerHasPeur;
 use Map\Player\PlayerInterface;
 use Map\World\WorldContainer;
 use Memory\MemoryManager;
@@ -421,6 +423,13 @@ class TuiRender implements MapRenderInterface
         }
 
         $lines[] = Line::fromString(sprintf('Position %s', (string) $player->getPosition()));
+
+        if ($player instanceof PlayerHasPeur) {
+            foreach ($this->fearLines($player->getPeur()) as $line) {
+                $lines[] = $line;
+            }
+        }
+
         $lines[] = Line::fromString('');
         $lines[] = Line::fromSpans(
             Span::styled('Objectifs', Style::default()->fg(AnsiColor::Yellow))
@@ -449,6 +458,50 @@ class TuiRender implements MapRenderInterface
         );
 
         return ParagraphWidget::fromText(Text::fromLines(...$lines));
+    }
+
+    /**
+     * What the cat has learnt to expect, worst first.
+     *
+     * Fear that cannot be read cannot be told from a bug: the panel is where
+     * one sees that a cat is walking the long way round because it remembers
+     * something, and not because the pathfinder is broken.
+     *
+     * @return list<Line>
+     */
+    private function fearLines(Peur $peur): array
+    {
+        if ($peur->isEmpty()) {
+            return [];
+        }
+
+        $lines = [Line::fromSpans(Span::styled('Peur', Style::default()->fg(AnsiColor::LightRed)))];
+
+        foreach ($peur->strongest() as [$cue, $weight]) {
+            $lines[] = Line::fromString(sprintf('  %-14s %.2f', $this->readable($cue), $weight));
+        }
+
+        return $lines;
+    }
+
+    /**
+     * Cues are keyed for lookup, not for reading. `sol:R` is a fine key and a
+     * poor label.
+     */
+    private function readable(string $cue): string
+    {
+        [$kind, $what] = array_pad(explode(':', $cue, 2), 2, '');
+
+        return match ($kind) {
+            'sol' => match ($what) {
+                MapBuilder::RONCE => 'les ronces',
+                MapBuilder::ARBRE => 'les bois',
+                MapBuilder::EAU => "l'eau",
+                default => 'le sol ' . $what,
+            },
+            'lieu' => 'la zone ' . $what,
+            default => $cue,
+        };
     }
 
     /**

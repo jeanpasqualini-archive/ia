@@ -49,6 +49,10 @@ class TilePalette
         MapBuilder::HERBE => ['#3f6b36', '#48783d', '#375f30', '#436f39'],
         MapBuilder::ARBRE => ['#23461e', '#1d3c19', '#274c21', '#204219'],
         MapBuilder::EAU => ['#1f4f7a', '#265a8a', '#1a4468', '#22537f'],
+        // Dry and brownish, so a bramble patch reads as something other than
+        // meadow at a glance. The player is meant to see them; the cat is the
+        // one that has to find out.
+        MapBuilder::RONCE => ['#6b5a2f', '#5d4e28', '#755f33', '#63522b'],
     ];
 
     /** Flowers are not all the same colour, which is half of why meadows read well. */
@@ -112,7 +116,7 @@ class TilePalette
             // row. mb_strwidth answers 1 for it, so the frame width test never
             // saw it: Unicode says narrow, the font substitution says
             // otherwise. A canopy is better read as a dark mass anyway.
-            MapBuilder::HERBE, MapBuilder::EAU, MapBuilder::ARBRE => ' ',
+            MapBuilder::HERBE, MapBuilder::EAU, MapBuilder::ARBRE, MapBuilder::RONCE => ' ',
             MapBuilder::FLEUR => '✿',
             default => $tile,
         };
@@ -198,7 +202,7 @@ class TilePalette
         return match ($tile) {
             // Nothing is drawn on top of these, so they carry a background
             // and no foreground at all.
-            MapBuilder::HERBE, MapBuilder::EAU, MapBuilder::ARBRE => Style::default()
+            MapBuilder::HERBE, MapBuilder::EAU, MapBuilder::ARBRE, MapBuilder::RONCE => Style::default()
                 ->bg($this->shade($tile, $variant)),
             // A flower sits in the meadow, so it keeps the grass underneath.
             MapBuilder::FLEUR => Style::default()
@@ -230,6 +234,7 @@ class TilePalette
             MapBuilder::HERBE => Style::default()->bg(AnsiColor::LightGreen)->fg(AnsiColor::LightGreen),
             MapBuilder::ARBRE => Style::default()->bg(AnsiColor::Green)->fg(AnsiColor::Green),
             MapBuilder::EAU => Style::default()->bg(AnsiColor::Blue)->fg(AnsiColor::Blue),
+            MapBuilder::RONCE => Style::default()->bg(AnsiColor::DarkGray)->fg(AnsiColor::DarkGray),
             MapBuilder::FLEUR => Style::default()->bg(AnsiColor::LightGreen)->fg(AnsiColor::Magenta),
             default => null === self::playerIndex($tile)
                 ? Style::default()

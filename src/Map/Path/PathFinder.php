@@ -42,13 +42,23 @@ class PathFinder
     /** @var list<list<int|null>> */
     private array $costs;
 
+    /** @var array<int, array<int, string>> */
+    private array $tiles;
+
     private int $width;
 
     private int $height;
 
-    public function __construct(private MapBuilder $map)
+    /**
+     * $bias is what the searcher subjectively adds to a tile — a cat's fear.
+     * Left out, the search is the world's own opinion, which is what the
+     * field of view wants: being afraid of a place does not stop one seeing
+     * it.
+     */
+    public function __construct(private MapBuilder $map, private ?CostBiasInterface $bias = null)
     {
         $this->costs = $map->costGrid();
+        $this->tiles = $map->terrain();
         $this->height = count($this->costs);
         $this->width = count($this->costs[0] ?? []);
     }
@@ -175,7 +185,15 @@ class PathFinder
     private function flood(Point $from, array $goals, ?int $budget): array
     {
         $start = $this->index($from->getX(), $from->getY());
+
+        // Two costs are carried, and keeping them apart is the whole point.
+        // $reach is what the world charges and is the only thing the budget
+        // is measured against — sight is a fact. $best adds what the searcher
+        // subjectively fears and is what the expansion is ordered by — that
+        // is a preference. Conflated, a cat that fears a path stops *seeing*
+        // the food at the end of it, which is not what fear does.
         $best = [$start => 0];
+        $reach = [$start => 0];
         $cameFrom = [];
 
         $queue = new SplPriorityQueue();
@@ -185,12 +203,13 @@ class PathFinder
             $current = $queue->extract();
 
             if (isset($goals[$current])) {
-                return ['best' => $best, 'cameFrom' => $cameFrom, 'reached' => $current];
+                return ['best' => $reach, 'cameFrom' => $cameFrom, 'reached' => $current];
             }
 
             $x = $current % $this->width;
             $y = intdiv($current, $this->width);
             $costSoFar = $best[$current];
+            $reachSoFar = $reach[$current];
 
             foreach (self::MOVES as [$dx, $dy]) {
                 $nx = $x + $dx;
@@ -210,13 +229,21 @@ class PathFinder
                     continue;
                 }
 
-                $total = $costSoFar + $cost * ((0 !== $dx && 0 !== $dy) ? self::DIAGONAL : self::STRAIGHT);
+                $step = $cost * ((0 !== $dx && 0 !== $dy) ? self::DIAGONAL : self::STRAIGHT);
+                $walked = $reachSoFar + $step;
 
-                // Out of sight. Dropping the tile here rather than after
-                // expanding it is the whole point: the frontier stops growing
-                // and the search costs the same on any size of map.
-                if (null !== $budget && $total > $budget) {
+                // Out of sight. Measured on what the world charges, never on
+                // what the searcher fears. Dropping the tile here rather than
+                // after expanding it is what keeps the frontier bounded, so
+                // the search costs the same on any size of map.
+                if (null !== $budget && $walked > $budget) {
                     continue;
+                }
+
+                $total = $costSoFar + $step;
+
+                if (null !== $this->bias) {
+                    $total += $this->bias->bias($this->tiles[$ny][$nx] ?? '', $nx, $ny);
                 }
 
                 $key = $this->index($nx, $ny);
@@ -226,13 +253,14 @@ class PathFinder
                 }
 
                 $best[$key] = $total;
+                $reach[$key] = $walked;
                 $cameFrom[$key] = $current;
                 // SplPriorityQueue pops the highest priority first.
                 $queue->insert($key, -$total);
             }
         }
 
-        return ['best' => $best, 'cameFrom' => $cameFrom, 'reached' => null];
+        return ['best' => $reach, 'cameFrom' => $cameFrom, 'reached' => null];
     }
 
     /**

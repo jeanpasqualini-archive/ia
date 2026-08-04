@@ -17,12 +17,28 @@ class MapBuilder
     public const ARBRE = 'Y';
     public const EAU = 'E';
     public const FLEUR = 'F';
+    public const RONCE = 'R';
 
     public const LAYER_MAP = 'map';
     public const LAYER_PLAYER = 'player';
 
     /** @var list<string> */
-    private const ALLOWED_ITEMS = [self::HERBE, self::ARBRE, self::EAU, self::FLEUR];
+    private const ALLOWED_ITEMS = [self::HERBE, self::ARBRE, self::EAU, self::FLEUR, self::RONCE];
+
+    /**
+     * Damage taken for standing on a tile.
+     *
+     * Brambles are the only thing that hurts, and note what they cost to walk
+     * on: one, the same as grass. That is deliberate and it is the whole
+     * mechanism. If they were expensive here, every cat would route round
+     * them from birth and there would be nothing to learn — the avoidance has
+     * to come from the cat's own memory, not from the map telling it.
+     *
+     * @var array<string, int>
+     */
+    private const HURTS = [
+        self::RONCE => 1,
+    ];
 
     /**
      * Cost of stepping onto a tile, null meaning impassable. Undergrowth is
@@ -33,6 +49,7 @@ class MapBuilder
     private const COSTS = [
         self::HERBE => 1,
         self::FLEUR => 1,
+        self::RONCE => 1,
         self::ARBRE => 3,
         self::EAU => null,
     ];
@@ -159,6 +176,33 @@ class MapBuilder
         // array_key_exists, not ??: an impassable tile has a null cost, which
         // ?? would happily replace with the default.
         return array_key_exists($tile, self::COSTS) ? self::COSTS[$tile] : 1;
+    }
+
+    /**
+     * The terrain tile at raw coordinates, without going through a Point.
+     * Read on every tile a search expands, so it stays allocation free.
+     */
+    public function tileAt(int $x, int $y): ?string
+    {
+        return $this->layers[self::LAYER_MAP][$y][$x] ?? null;
+    }
+
+    /**
+     * The terrain layer itself, for a caller that walks it tile by tile.
+     *
+     * @return array<int, array<int, string>>
+     */
+    public function terrain(): array
+    {
+        return $this->layers[self::LAYER_MAP];
+    }
+
+    /**
+     * Damage for standing here, zero for anywhere that does not bite.
+     */
+    public function hurts(Point $point): int
+    {
+        return self::HURTS[$this->getItem($point) ?? ''] ?? 0;
     }
 
     public function isWalkable(Point $point): bool

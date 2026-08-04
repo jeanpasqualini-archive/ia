@@ -46,6 +46,14 @@ visible à tous les niveaux de zoom, même quand une cellule représente
 soixante-quatre tuiles. Chaque chat ne voit qu'à vingt-cinq cases autour de
 lui : quand il n'a pas de fleur en vue, il part explorer.
 
+Des ronces poussent en couronne autour des parterres de fleurs : elles ne
+coûtent rien à traverser, mais elles piquent. Un chat qui s'y blesse s'en
+souvient et fait le tour la fois suivante — c'est de l'anticipation, pas une
+règle : la carte, elle, continue de dire que les ronces sont gratuites. Le
+souvenir porte sur ce qui était là au moment de la douleur (le terrain, le
+lieu), les indices se font concurrence, et tout cela s'estompe avec le temps.
+Le panneau IA affiche ce que le chat craint et à quel point.
+
 Le bord de ce champ de vision est dessiné autour du chat sélectionné. Ce n'est
 pas un cercle : la vue se paie en coût de déplacement, donc elle est rognée
 dans les sous-bois et coupée net par un lac — un chat ne voit pas l'autre rive.

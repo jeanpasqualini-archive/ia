@@ -34,6 +34,19 @@ class TerrainMapProvider implements MapProviderInterface
     /** Share of the *grass* that blooms. The cat has to find food easily. */
     public const FLOWER_SHARE = 0.07;
 
+    /**
+     * Brambles are cut from the band just *below* the flower threshold, so
+     * they grow as a collar around each patch of flowers.
+     *
+     * The first version took them from the trough of the same field, which
+     * was prettier and useless: brambles ended up exactly where flowers were
+     * not, so a cat walking to its food was walking away from them. Measured
+     * over four thousand ticks on four maps, only one seed produced a single
+     * sting — the whole mechanism was unreachable. Put around the food, they
+     * are the first thing in this world a cat has to weigh.
+     */
+    public const BRAMBLE_SHARE = 0.06;
+
     /** Distance between two control points of the coarsest octave, in tiles. */
     private const BASE_CELL = 12;
 
@@ -88,15 +101,22 @@ class TerrainMapProvider implements MapProviderInterface
             ? PHP_FLOAT_MAX
             : $this->quantile($grassBloom, 1 - self::FLOWER_SHARE);
 
+        $brambleLevel = [] === $grassBloom
+            ? PHP_FLOAT_MAX
+            : $this->quantile($grassBloom, 1 - self::FLOWER_SHARE - self::BRAMBLE_SHARE);
+
         $map = [];
 
         for ($y = 0; $y < $this->lines; $y++) {
             $row = '';
 
             for ($x = 0; $x < $this->columns; $x++) {
-                $row .= MapBuilder::HERBE === $tiles[$y][$x] && $bloom[$y][$x] >= $bloomLevel
-                    ? MapBuilder::FLEUR
-                    : $tiles[$y][$x];
+                $row .= match (true) {
+                    MapBuilder::HERBE !== $tiles[$y][$x] => $tiles[$y][$x],
+                    $bloom[$y][$x] >= $bloomLevel => MapBuilder::FLEUR,
+                    $bloom[$y][$x] >= $brambleLevel => MapBuilder::RONCE,
+                    default => $tiles[$y][$x],
+                };
             }
 
             $map[] = $row;

@@ -6,9 +6,11 @@ namespace IA\Objectif;
 
 use Map\Builder\MapBuilder;
 use Map\Location\Point;
+use Map\Path\CostBiasInterface;
 use Map\Path\PathFinder;
 use Map\Path\Route;
 use Map\Player\PlayerHasEstomac;
+use Map\Player\PlayerHasPeur;
 use Map\World\World;
 use Psr\Log\LogLevel;
 
@@ -137,7 +139,9 @@ class Manger implements ObjectifInterface
             return null;
         }
 
-        $steps = (new PathFinder($world->getMap()))->toNearest(
+        // Routed with the cat's own price list, not the world's: a bramble
+        // it has been stung by is dear to it and cheap to everyone else.
+        $steps = (new PathFinder($world->getMap(), $this->bias()))->toNearest(
             $this->player->getPosition(),
             MapBuilder::FLEUR,
             $this->player->getVision()
@@ -163,6 +167,11 @@ class Manger implements ObjectifInterface
         );
 
         return $route;
+    }
+
+    private function bias(): ?CostBiasInterface
+    {
+        return $this->player instanceof PlayerHasPeur ? $this->player->getPeur() : null;
     }
 
     /**
@@ -195,7 +204,7 @@ class Manger implements ObjectifInterface
             // Twice the sight line as a budget: the target sits at the edge of
             // it, and walking round a lake to reach it costs more than the
             // straight line.
-            $steps = (new PathFinder($map))->to($from, $target, $vision * 2);
+            $steps = (new PathFinder($map, $this->bias()))->to($from, $target, $vision * 2);
 
             if (null !== $steps && [] !== $steps) {
                 $this->exploring = true;

@@ -70,6 +70,40 @@ final class TerrainMapProviderTest extends TestCase
      * same tiles shuffled — identical composition, no structure — score far
      * lower. That gap is exactly what the generator adds.
      */
+    /**
+     * Brambles are a collar around the flowers rather than a patch of their
+     * own, so a cat walking to its food has to weigh them.
+     *
+     * The first version cut them from the trough of the same field, which was
+     * prettier and useless: they grew exactly where flowers were not, so the
+     * cat walked away from them by construction. Measured over four thousand
+     * ticks on four maps, one seed produced a single sting and the whole fear
+     * mechanism was unreachable.
+     */
+    public function testBramblesGrowAroundTheFlowers(): void
+    {
+        $map = new MapBuilder((new TerrainMapProvider(60, 80, 3))->getMap());
+        $brambles = $map->positionsOf(MapBuilder::RONCE);
+        $bordering = 0;
+
+        foreach ($brambles as [$y, $x]) {
+            foreach ([[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, 1], [-1, 1], [1, -1]] as [$dx, $dy]) {
+                if (MapBuilder::FLEUR === $map->tileAt($x + $dx, $y + $dy)) {
+                    $bordering++;
+
+                    break;
+                }
+            }
+        }
+
+        self::assertGreaterThan(0, count($brambles));
+        self::assertGreaterThan(
+            0.3,
+            $bordering / count($brambles),
+            'une bonne part des ronces borde une fleur'
+        );
+    }
+
     public function testWaterFormsLakesInsteadOfSprinkles(): void
     {
         $map = (new TerrainMapProvider(24, 70, 7))->getMap();

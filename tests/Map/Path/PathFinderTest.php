@@ -227,6 +227,65 @@ final class PathFinderTest extends TestCase
         self::assertArrayNotHasKey(5, $seen);
     }
 
+    /**
+     * A searcher's own opinion changes which way it goes, and nothing else.
+     */
+    public function testABiasSendsTheRouteRoundRatherThanThrough(): void
+    {
+        $rows = [
+            'XXXXXXXXXX',
+            'XRRRRRRRRX',
+            'XXXXXXXXXF',
+        ];
+        $map = new MapBuilder($rows);
+        $from = new Point(0, 1);
+
+        $straight = (new PathFinder($map))->toNearest($from, MapBuilder::FLEUR, 40);
+        $wary = (new PathFinder($map, new AvoidsBrambles()))->toNearest($from, MapBuilder::FLEUR, 40);
+
+        self::assertNotNull($straight);
+        self::assertNotNull($wary);
+        self::assertGreaterThan(0, $this->brambles($map, $straight), 'sans opinion, il coupe au plus court');
+        self::assertSame(0, $this->brambles($map, $wary), 'avec, il contourne');
+    }
+
+    /**
+     * The bug this guards against is subtle and was real: the range is what a
+     * searcher can *see*, the bias is what it *prefers*, and adding the
+     * second to the first makes a cat stop seeing food at the end of a path
+     * it dislikes. Fear must never blind.
+     */
+    public function testABiasDoesNotShortenTheSightLine(): void
+    {
+        // The only way through is over brambles, and it is well within range.
+        $map = new MapBuilder([
+            'EEEEE',
+            'XRRRX',
+            'EEEEF',
+        ]);
+        $from = new Point(0, 1);
+
+        $route = (new PathFinder($map, new AvoidsBrambles()))->toNearest($from, MapBuilder::FLEUR, 10);
+
+        self::assertNotNull($route, 'la fleur reste visible, meme si le chemin lui deplait');
+    }
+
+    /**
+     * @param list<Point> $route
+     */
+    private function brambles(MapBuilder $map, array $route): int
+    {
+        $count = 0;
+
+        foreach ($route as $point) {
+            if (MapBuilder::RONCE === $map->tileAt($point->getX(), $point->getY())) {
+                $count++;
+            }
+        }
+
+        return $count;
+    }
+
     public function testTheRangeBoundsAPlainRouteToo(): void
     {
         $finder = $this->finder(['XXXXXXXXXX']);
