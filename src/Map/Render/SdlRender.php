@@ -60,6 +60,13 @@ final class SdlRender implements GameRenderInterface
      */
     private const OVERVIEW_STEP = 2;
 
+    /**
+     * How much the isometric buffer is blown up by. Two shows the landscape,
+     * four puts one inside it — the same pixels, larger.
+     */
+    private const ISO_WIDE = 2;
+    private const ISO_CLOSE = 4;
+
     private const TEXT = 2;
     private const LINE = 9 * self::TEXT;
 
@@ -84,7 +91,8 @@ final class SdlRender implements GameRenderInterface
 
     private mixed $mapTexture = null;
 
-    private mixed $isoTexture = null;
+    /** @var array<int, mixed> one streaming texture per isometric zoom */
+    private array $isoTextures = [];
 
     private mixed $sidebarTexture = null;
 
@@ -106,6 +114,21 @@ final class SdlRender implements GameRenderInterface
 
     private IsoView $iso;
 
+    private FirstPerson $eyes;
+
+    /**
+     * Where each cat was last seen, so a heading can be worked out.
+     *
+     * A cat has no facing of its own — nothing in the simulation ever needed
+     * one — and giving it one would put a field in `World`, which is
+     * serialized. It is derived here instead, from where the animal actually
+     * went, and kept when it stands still so the view does not snap back to
+     * north every time it stops to eat.
+     *
+     * @var array<int, array{int, int, float, float}>
+     */
+    private array $facing = [];
+
     /**
      * Which way the world is being looked at.
      *
@@ -113,10 +136,17 @@ final class SdlRender implements GameRenderInterface
      * dashboard are the same in both, so a cat is in the same place and the
      * meadow is the same green. `v` swaps them.
      */
-    private bool $isometric = false;
+    /** Three ways of looking, cycled by `v`. */
+    private const VIEW_MAP = 0;
+    private const VIEW_ISO = 1;
+    private const VIEW_EYES = 2;
+
+    private int $view = self::VIEW_MAP;
 
     /** Zoom levels given up on entering the isometric view, put back on exit. */
     private int $zoomAway = 0;
+
+    private int $isoZoom = self::ISO_WIDE;
 
     private Dashboard $dashboard;
 
@@ -179,6 +209,7 @@ final class SdlRender implements GameRenderInterface
         $this->clock ??= static fn (): float => microtime(true);
         $this->cat = new CatSprite();
         $this->iso = new IsoView($this->palette);
+        $this->eyes = new FirstPerson($this->palette);
         $this->dashboard = new Dashboard($this->memoryManager, $this->memoryUsage);
         $this->bufferLog = new BufferLogger();
         $this->logger->addLogger($this->bufferLog);
@@ -231,7 +262,14 @@ final class SdlRender implements GameRenderInterface
         // be blown up from one pixel a cell — so it has a texture of its own,
         // at half the area it fills. Measured, a whole screen of ground costs
         // 15 ms a frame at full size against 4.8 at half.
-        $this->isoTexture = $this->texture($this->isoWidth(), $this->isoHeight());
+        // One per zoom: a streaming texture has a fixed size, and swapping
+        // zoom must not mean destroying and rebuilding one mid frame.
+        foreach ([self::ISO_WIDE, self::ISO_CLOSE] as $zoom) {
+            $this->isoTextures[$zoom] = $this->texture(
+                intdiv($this->mapWidth, $zoom),
+                intdiv($this->mapHeight, $zoom)
+            );
+        }
         $this->sidebarTexture = $this->texture(self::SIDEBAR, $this->mapHeight);
         $this->bottomTexture = $this->texture(
             $this->mapWidth + self::SIDEBAR,
@@ -260,7 +298,7 @@ final class SdlRender implements GameRenderInterface
 
         $this->started = false;
 
-        foreach ([$this->mapTexture, $this->isoTexture, $this->sidebarTexture, $this->bottomTexture] as $texture) {
+        foreach (array_merge([$this->mapTexture, $this->sidebarTexture, $this->bottomTexture], array_values($this->isoTextures)) as $texture) {
             if (null !== $texture) {
                 $this->sdl->SDL_DestroyTexture($texture);
             }
@@ -286,7 +324,7 @@ final class SdlRender implements GameRenderInterface
      */
     public function getSize(): array
     {
-        if ($this->isometric) {
+        if (self::VIEW_MAP !== $this->view) {
             // Both world axes run diagonally there, so a rectangle of screen
             // is a diamond of world and the coverage is not the area divided
             // by a cell.
@@ -314,7 +352,11 @@ final class SdlRender implements GameRenderInterface
             return;
         }
 
-        $surface = $this->isometric ? $this->isoTexture : $this->mapTexture;
+        $surface = match ($this->view) {
+            self::VIEW_MAP => $this->mapTexture,
+            self::VIEW_ISO => $this->isoTextures[$this->isoZoom],
+            default => $this->isoTextures[self::ISO_CLOSE],
+        };
         $this->sdl->SDL_UpdateTexture($surface, null, $mapPixels->bytes(), $mapPixels->width() * 4);
         $this->sdl->SDL_UpdateTexture($this->sidebarTexture, null, $sidebar->bytes(), $sidebar->width() * 4);
         $this->sdl->SDL_UpdateTexture($this->bottomTexture, null, $bottom->bytes(), $bottom->width() * 4);
@@ -345,7 +387,11 @@ final class SdlRender implements GameRenderInterface
         $this->lastMap = $map;
 
         return [
-            $this->isometric ? $this->paintIso($map) : $this->paintMap($map),
+            match ($this->view) {
+                self::VIEW_MAP => $this->paintMap($map),
+                self::VIEW_ISO => $this->paintIso($map),
+                default => $this->paintEyes($map),
+            },
             $this->paintSidebar(),
             $this->paintBottom(),
         ];
@@ -365,36 +411,75 @@ final class SdlRender implements GameRenderInterface
      */
     public function toggleView(): bool
     {
-        $this->isometric = !$this->isometric;
+        $was = $this->view;
+        $this->view = ($this->view + 1) % 3;
 
-        if ($this->isometric) {
+        // Captured on the way *out* of the map and nowhere else. Recomputed on
+        // every swap it would be reset to zero the second time round — the
+        // camera is already at its closest by then — and the map's zoom would
+        // be quietly lost on the way through the other views.
+        if (self::VIEW_MAP === $was) {
             $this->zoomAway = 0;
 
             while (!$this->camera->isClosest()) {
                 $this->camera->zoomIn();
                 ++$this->zoomAway;
             }
+        }
+
+        if (self::VIEW_MAP === $this->view) {
+            for ($step = 0; $step < $this->zoomAway; $step++) {
+                $this->camera->zoomOut();
+            }
+
+            $this->zoomAway = 0;
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * **In the isometric view, closer means a bigger tile and not a bigger
+     * bite of the world.**
+     *
+     * Sampling is what a map does, and it is exactly what an isometric view
+     * cannot do: a tree standing for eight tiles is not a smaller tree, it is
+     * a wrong one, and the coverage diamond runs off the edge of the world
+     * long before the screen fills. So the buffer is composed *smaller* and
+     * blown up further — a tile drawn 16 pixels wide and scaled by four is 64
+     * on screen, out of the same art. It costs less than the wide view rather
+     * than more, there being a quarter as many tiles to paint.
+     */
+    public function zoom(bool $closer): bool
+    {
+        if (self::VIEW_MAP === $this->view) {
+            $closer ? $this->camera->zoomIn() : $this->camera->zoomOut();
 
             return true;
         }
 
-        for ($step = 0; $step < $this->zoomAway; $step++) {
-            $this->camera->zoomOut();
+        // Nothing to zoom behind a cat's eyes: how near a thing looks is how
+        // near it is, which is the whole of what the view says.
+        if (self::VIEW_EYES === $this->view) {
+            return false;
         }
 
-        $this->zoomAway = 0;
+        $wanted = $closer ? self::ISO_CLOSE : self::ISO_WIDE;
 
-        return false;
-    }
+        if ($wanted === $this->isoZoom) {
+            return false;
+        }
 
-    public function zoomable(): bool
-    {
-        return !$this->isometric;
+        $this->isoZoom = $wanted;
+
+        return true;
     }
 
     public function isIsometric(): bool
     {
-        return $this->isometric;
+        return self::VIEW_MAP !== $this->view;
     }
 
     /**
@@ -441,14 +526,59 @@ final class SdlRender implements GameRenderInterface
         return 0xFF000000 | ($r << 16) | ($g << 8) | $b;
     }
 
+    /**
+     * The world through the selected cat's eyes.
+     *
+     * The heading is derived from where the animal actually went rather than
+     * stored on it: nothing in the simulation ever needed a facing, and adding
+     * one would put a field in `World`, which is serialized. It is kept when
+     * the cat stands still, or the view would snap back to north every time it
+     * stopped to eat.
+     *
+     * @param array<int, array<int, string>> $map
+     */
+    private function paintEyes(array $map): Pixels
+    {
+        $player = $this->selectedPlayer();
+
+        if (null === $player) {
+            return new Pixels($this->eyesWidth(), $this->eyesHeight(), self::BACKGROUND);
+        }
+
+        $index = $this->activeTab;
+        $x = $player->getPosition()->getX();
+        $y = $player->getPosition()->getY();
+        [$wasX, $wasY, $dirX, $dirY] = $this->facing[$index] ?? [$x, $y, 0.0, 1.0];
+
+        if ($x !== $wasX || $y !== $wasY) {
+            $length = sqrt((($x - $wasX) ** 2) + (($y - $wasY) ** 2));
+            $dirX = ($x - $wasX) / $length;
+            $dirY = ($y - $wasY) / $length;
+        }
+
+        $this->facing[$index] = [$x, $y, $dirX, $dirY];
+
+        return $this->eyes->paint($map, $player, [$dirX, $dirY], $this->eyesWidth(), $this->eyesHeight());
+    }
+
+    private function eyesWidth(): int
+    {
+        return intdiv($this->mapWidth, self::ISO_CLOSE);
+    }
+
+    private function eyesHeight(): int
+    {
+        return intdiv($this->mapHeight, self::ISO_CLOSE);
+    }
+
     private function isoWidth(): int
     {
-        return intdiv($this->mapWidth, 2);
+        return intdiv($this->mapWidth, $this->isoZoom);
     }
 
     private function isoHeight(): int
     {
-        return intdiv($this->mapHeight, 2);
+        return intdiv($this->mapHeight, $this->isoZoom);
     }
 
     public function clear($map): void
@@ -813,7 +943,11 @@ final class SdlRender implements GameRenderInterface
             $this->timeControl->isPaused() ? '▶' : '▮▮',
             $this->timeControl->speedLabel(),
             $this->camera->label(),
-            $this->isometric ? 'v carte    2.5d toujours a 1:1' : 'v 2.5d'
+            match ($this->view) {
+                self::VIEW_MAP => 'v 2.5d',
+                self::VIEW_ISO => sprintf('v yeux du chat    z de pres (x%d)', $this->isoZoom),
+                default => 'v carte',
+            }
         );
 
         BitmapFont::write(

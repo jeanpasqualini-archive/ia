@@ -71,7 +71,7 @@ make shell    # shell in the container
 make help     # all targets
 ```
 
-Keys: `space` play/pause, `n` one tick, `-`/`+` speed, **arrows to move the view, `z`/`Z` to zoom in and out, or drag the map with the mouse and zoom with the wheel**, `c` centre on the selected cat once, **`l` (or the panel's button) ride along with it**, `t` time machine then `p`/`a` to browse snapshots, `tab` or `1`..`9` to switch AI panel, `r` new map, `x` persist memory, `m` mute, `f` (or ctrl-L) repaint the whole screen, **`v` swap between the map and the isometric view, in the window, and click the overview at the foot of the panel to jump**, `q` quit (`b`/`s` are kept as pause/play aliases). The game starts paused; `--play` starts it running.
+Keys: `space` play/pause, `n` one tick, `-`/`+` speed, **arrows to move the view, `z`/`Z` to zoom in and out, or drag the map with the mouse and zoom with the wheel**, `c` centre on the selected cat once, **`l` (or the panel's button) ride along with it**, `t` time machine then `p`/`a` to browse snapshots, `tab` or `1`..`9` to switch AI panel, `r` new map, `x` persist memory, `m` mute, `f` (or ctrl-L) repaint the whole screen, **`v` cycle the map, the isometric view and the cat's own eyes, in the window, and click the overview at the foot of the panel to jump**, `q` quit (`b`/`s` are kept as pause/play aliases). The game starts paused; `--play` starts it running.
 
 `--window` draws in an SDL window rather than in the terminal. `--colours=16` or `--colours=24` forces the colour depth instead of trusting `COLORTERM`, which is inherited and therefore wrong in both directions.
 
@@ -153,6 +153,20 @@ Composed at half the area it fills and blown up. Measured on a real 256x160 terr
 Grass has an asset of its own — three tufts, on two tiles in five, chosen by the same hash that grains the ground. Without it the meadow was the one terrain in the isometric view drawn the way the *map* view draws everything, a flat colour; with a tuft on every tile it is a lawn, and with one shape it is wallpaper. The lake breaks into foam above `FOAM_CREST`, read from `TilePalette::swellLevel()` — the very wave that colours the water, never a second one, because two waves meant to be the same drift apart the first time either is tuned. And the swell takes twenty four steps in a window against six in a terminal: the quantisation is an escape-sequence budget, and a window sends none.
 
 Two geometry mistakes the tests found and reading would not have. The lattice fans out from a point, so drawn from the top of the view it left both upper corners bare, and it has to start *above* the view and be clipped. Correcting only that left the two lower corners bare for the mirror reason: a lattice sized by depth alone narrows towards the bottom exactly as it does towards the top. `IsoView::coverage()` therefore solves for the far corner — a screen position comes from the sum *and* the difference of the axes — rather than counting rows.
+
+### Through the cat's eyes
+
+`v` cycles three views rather than two, the third being a **ray caster** — not a ray tracer, which is a different thing entirely: one ray per screen *column*, walked across the tile grid until it meets something a cat cannot walk through, and the distance it travelled is the height to draw. Wolfenstein's algorithm, and plane geometry rather than lighting.
+
+**Nothing had to be built for it, which is the point.** The world is already a grid of tiles with a cost per tile, which is exactly what a ray caster wants: walls are what a cat cannot cross, floor is the rest, and DDA jumps from one tile boundary to the next so a ray costs a step per tile it crosses. The alternative — meshes, a projection matrix, a depth buffer — is a great deal of machinery for a world that is a flat grid of squares. It is also the same shape of algorithm as `PathFinder::costsWithin()`, which floods the grid outward from the cat.
+
+It answers the project's own question more directly than any panel: the cat only knows what it can see, and here so does the player. A lake is a lake you have to walk round, a thicket is a wall, a flower is a spot of colour some way off. The panel says what the goal is; this shows the evidence it was chosen on.
+
+Water is deliberately not a wall. It stops a cat and not its eyes, and a blue wall across a shore would say the opposite of what a shore is.
+
+Measured at 256x160: **14.5 ms**, against an estimate of 6. The gap is worth keeping — the rays are free and the *floor* is the whole cost, forty thousand pixels each asking the palette what tile lies there. The visible half of a problem is not the expensive half.
+
+There are no billboards, so the other cats and the plants are floor colour rather than shapes: a sprite in a ray cast scene needs a per-column depth kept from the wall pass and sorting by distance, which is a second mechanism and worth measuring before it grows one.
 
 **An overview of the whole world sits at the bottom of the panel**, sampled every other tile — 128x80 for a 256x160 world — with the view drawn on it as an outline and the cats as three pixel dots. It is in the *panel* and not over the map because the panel is at true pixel size while the isometric view is composed at half and blown up: an overview drawn there would come out as soft as the ground it exists to help you leave. Clicking it puts the view there, and `GameRenderInterface::jumpTo()` is asked before the map, since a click inside the panel is not a click on the world and the two must not both answer. The terminal declines: its map view already shows the whole world at 1:8, so *where am I* is answerable from the picture itself.
 

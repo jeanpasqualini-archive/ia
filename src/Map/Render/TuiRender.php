@@ -194,8 +194,10 @@ class TuiRender implements GameRenderInterface
         return false;
     }
 
-    public function zoomable(): bool
+    public function zoom(bool $closer): bool
     {
+        $closer ? $this->camera->zoomIn() : $this->camera->zoomOut();
+
         return true;
     }
 

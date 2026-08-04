@@ -615,14 +615,13 @@ class GameRunner
 
     private function zoom(bool $closer): bool
     {
-        // Asked rather than assumed: the isometric view is always 1:1, and
-        // zooming out there empties most of the screen instead of showing
-        // more of the world.
-        if (!$this->render->zoomable()) {
+        // The renderer decides what closer means in the view it is showing:
+        // a map samples fewer tiles per cell, an isometric view draws bigger
+        // ones. Doing it here would mean the loop knowing which is on.
+        if (!$this->render->zoom($closer)) {
             return false;
         }
 
-        $closer ? $this->camera->zoomIn() : $this->camera->zoomOut();
         $this->audio->play(SoundEffect::Blip);
 
         return true;

@@ -65,16 +65,15 @@ interface GameRenderInterface extends MapRenderInterface
     public function toggleView(): bool;
 
     /**
-     * Whether zooming means anything in the view currently in force.
+     * Move closer or further, in whatever way the current view means it.
      *
-     * Asked rather than assumed, because only the renderer knows. The
-     * isometric view says no: its coverage is a diamond of some seventy cells
-     * a side, so zoomed out it asks the world for far more rows than it has,
-     * and the picture closes into a wedge with sky around it. Sampling would
-     * be meaningless there in any case — a tree standing for eight tiles says
-     * nothing.
+     * The renderer decides, because only it knows: a map samples more tiles
+     * per cell, while an isometric view cannot — its coverage is a diamond
+     * some seventy cells a side, so sampled out it asks the world for more
+     * rows than it has and closes into a wedge. There, closer means bigger
+     * tiles instead. Answers whether anything changed.
      */
-    public function zoomable(): bool;
+    public function zoom(bool $closer): bool;
 
     /**
      * A movement on screen turned into tiles.
