@@ -654,14 +654,23 @@ final class SdlRender implements GameRenderInterface
             $y += self::LINE;
         }
 
-        // The button, above the memory panel and below whatever the cat is
-        // doing, so it does not move as goals come and go.
+        // **Stacked from the bottom in one chain, never measured separately.**
+        // The memory panel, the button and the overview were each positioned
+        // from the foot of the panel by their own expression, so none of them
+        // knew the others were there and the overview came down on top of the
+        // button. Three sums from the same edge is how things land on each
+        // other; each one now starts where the one below it ended.
+        $memory = $this->dashboard->memory();
+        $memoryTop = $this->mapHeight - 12 - self::LINE * count($memory);
+
+        $buttonHeight = self::LINE + 6;
+        $buttonTop = $memoryTop - 14 - $buttonHeight;
+
         $following = $this->camera->isFollowing();
         $label = $following ? ' l : ne plus suivre ' : ' l : suivre le chat ';
         $buttonWidth = BitmapFont::widthOf($label, self::TEXT) + 8;
-        $buttonTop = $this->mapHeight - 24 - self::LINE * (count($this->dashboard->memory()) + 2);
 
-        $pixels->rect(12, $buttonTop, $buttonWidth, self::LINE + 6, $following ? 0xFF2F6B35 : 0xFF2C5F8F);
+        $pixels->rect(12, $buttonTop, $buttonWidth, $buttonHeight, $following ? 0xFF2F6B35 : 0xFF2C5F8F);
         BitmapFont::write($pixels, 16, $buttonTop + 5, $label, 0xFFFFFFFF, self::TEXT);
 
         // In cells, because that is what the loop hands back from the mouse.
@@ -669,16 +678,14 @@ final class SdlRender implements GameRenderInterface
             intdiv($this->mapWidth + 12, self::CELL),
             intdiv($buttonTop, self::CELL),
             intdiv($this->mapWidth + 12 + $buttonWidth, self::CELL),
-            intdiv($buttonTop + self::LINE + 6, self::CELL),
+            intdiv($buttonTop + $buttonHeight, self::CELL),
         ];
 
-        $this->drawOverview($pixels);
+        $this->drawOverview($pixels, $buttonTop - 16);
 
-        // The memory panel sits at the bottom, where it does not push the AI
-        // about as the cat's goals come and go.
-        $y = $this->mapHeight - 12 - self::LINE * count($this->dashboard->memory());
+        $y = $memoryTop;
 
-        foreach ($this->dashboard->memory() as $line) {
+        foreach ($memory as $line) {
             BitmapFont::write($pixels, 12, $y, $line['text'], self::TONES[$line['tone']], self::TEXT);
             $y += self::LINE;
         }
@@ -702,7 +709,7 @@ final class SdlRender implements GameRenderInterface
      * that one tile speaks for its neighbour — the same trade the map view
      * makes when it is zoomed out.
      */
-    private function drawOverview(Pixels $pixels): void
+    private function drawOverview(Pixels $pixels, int $bottom): void
     {
         if ([] === $this->lastMap) {
             $this->overview = null;
@@ -713,7 +720,7 @@ final class SdlRender implements GameRenderInterface
         $width = intdiv($this->worldWidth, self::OVERVIEW_STEP);
         $height = intdiv($this->worldHeight, self::OVERVIEW_STEP);
         $left = intdiv(self::SIDEBAR - $width, 2);
-        $top = $this->mapHeight - 24 - self::LINE * count($this->dashboard->memory()) - $height - 16;
+        $top = $bottom - $height;
 
         $pixels->frame($left - 2, $top - 2, $width + 4, $height + 4, self::BORDER);
 

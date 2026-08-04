@@ -202,6 +202,34 @@ final class SdlRenderTest extends TestCase
         self::assertTrue($render->isOverMap(10, 10));
     }
 
+    /**
+     * **Nothing in the panel may sit on anything else.**
+     *
+     * The memory panel, the follow button and the overview were each placed by
+     * their own sum from the foot of the panel, so none knew the others were
+     * there and the overview came down across the button. A cell that answers
+     * two things is the signature, and it is what this sweeps for — the parts
+     * are stacked in one chain now, each starting where the one below it
+     * ended.
+     */
+    public function testNothingInThePanelSitsOnAnythingElse(): void
+    {
+        $render = $this->render();
+        $render->compose(array_fill(0, 160, array_fill(0, 256, 'X')));
+
+        $clashes = [];
+
+        for ($row = 0; $row < 80; $row++) {
+            for ($column = 128; $column < 178; $column++) {
+                if ($render->isOverFocusButton($column, $row) && $render->jumpTo($column, $row)) {
+                    $clashes[] = $column . ';' . $row;
+                }
+            }
+        }
+
+        self::assertSame([], $clashes, 'le bouton et la mini carte se chevauchent');
+    }
+
     private function water(int $x, int $y): int
     {
         return Pixels::pack((new TilePalette(trueColor: true))->pixel('E', $x, $y));
