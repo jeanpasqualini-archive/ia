@@ -52,6 +52,8 @@ Two asymmetries make it behave like an animal rather than like a table, and both
 
 What remains is the right behaviour rather than a failure: a cat still eats a foxglove out of ignorance the first time, and still eats one when it is the only food in range. That second case is the first genuine dilemma in this world, and it is where a second drive would start to earn its place.
 
+**Holes make the danger graded, and cost the same to walk on as grass.** That last part is the rule, not a detail: a hazard priced into the map is routed round from birth and there is nothing left to learn. Holes were given a cost of three at first — climbing out ought to cost something — and over six thousand ticks on three maps no cat ever fell in one. With the cost back to one, the gradient appears on its own: the rule moves by the pain that was not predicted, so a pit that hurts four times what a thorn does is feared about four times as much, and the detour it is worth follows. Nothing anywhere grades it.
+
 There is deliberately **no death**. A cat that died would have to leave the world, the AI panel and the tab selection, and mortality is not what pain is for: `life` is the running account of how much of it was taken — which is what makes a wary cat measurably better off than a reckless one — and it heals slowly so the account is about recent experience.
 
 ## Running
@@ -205,7 +207,7 @@ Serialization is the sharp edge of this codebase. Anything added to `World` or a
 
 ## Tests
 
-`make test` — 158 tests covering map queries and bounds, cat behaviour end-to-end (walks, eats, turns the flower to grass), snapshot round-trips, headless frame rendering, and the audio (oscillators, mixing, loop length, the feeding of the device against a fake output). The SDL test skips itself when the library is absent, which is the normal outcome in the container. `tests/WorldFactory.php` builds worlds from ASCII rows so nothing depends on the random provider.
+`make test` — 160 tests covering map queries and bounds, cat behaviour end-to-end (walks, eats, turns the flower to grass), snapshot round-trips, headless frame rendering, and the audio (oscillators, mixing, loop length, the feeding of the device against a fake output). The SDL test skips itself when the library is absent, which is the normal outcome in the container. `tests/WorldFactory.php` builds worlds from ASCII rows so nothing depends on the random provider.
 
 `phpunit.xml.dist` fails on warnings, notices and deprecations, but `ignoreIndirectDeprecations` keeps vendor deprecations from failing the suite.
 

@@ -99,6 +99,24 @@ final class MapBuilderTest extends TestCase
     }
 
     /**
+     * A hazard has to be cheap to walk on, or the pathfinder routes round it
+     * from birth and there is nothing left to learn. Holes were given a cost
+     * of three at first — climbing out ought to cost something — and over six
+     * thousand ticks on three maps no cat ever fell in one.
+     */
+    public function testWhatHurtsCostsNoMoreToWalkOnThanGrass(): void
+    {
+        $map = new MapBuilder(['XRT']);
+
+        self::assertSame(1, $map->cost(new Point(0, 0)), 'l herbe');
+        self::assertSame(1, $map->cost(new Point(1, 0)), 'la ronce');
+        self::assertSame(1, $map->cost(new Point(2, 0)), 'le trou');
+
+        self::assertSame(0, $map->hurts(new Point(0, 0)));
+        self::assertGreaterThan($map->hurts(new Point(1, 0)), $map->hurts(new Point(2, 0)), 'un trou fait plus mal');
+    }
+
+    /**
      * Scanning the whole map to keep the handful of tiles a cat can see is
      * the kind of cost that hides while the map is the size of the screen.
      */

@@ -179,6 +179,27 @@ final class PeurTest extends TestCase
         );
     }
 
+    /**
+     * Danger is graded without anything grading it. The rule moves by the
+     * pain that was not predicted, so a pit that hurts four times what a
+     * thorn does is feared about four times as much — and the detour it is
+     * worth follows.
+     */
+    public function testAWorseHurtIsFearedProportionallyMore(): void
+    {
+        $thorn = new Peur();
+        $thorn->remember(['sol:R'], 1.0);
+
+        $pit = new Peur();
+        $pit->remember(['sol:T'], 4.0);
+
+        self::assertEqualsWithDelta(
+            4 * $thorn->expect(['sol:R']),
+            $pit->expect(['sol:T']),
+            0.001
+        );
+    }
+
     public function testFearIsPricedAsADetourRatherThanAsAWall(): void
     {
         $map = new MapBuilder(['XXX', 'XRX', 'XXX']);

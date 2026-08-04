@@ -52,6 +52,11 @@ seul coup, bien plus vite qu'une griffure, en blâmant la plante et non
 l'endroit où elle poussait. Ensuite il fait le tour. Sauf s'il n'a rien d'autre
 à manger, auquel cas il la mange quand même.
 
+La prairie s'effondre par endroits en petits cratères. Un trou ne coûte rien à
+traverser — sinon le chat les éviterait sans jamais y tomber — mais il fait
+quatre fois plus mal qu'une ronce, et le chat finit par le craindre quatre fois
+plus, sans que rien ne le dise nulle part.
+
 Des ronces poussent en couronne autour des parterres de fleurs : elles ne
 coûtent rien à traverser, mais elles piquent. Un chat qui s'y blesse s'en
 souvient et fait le tour la fois suivante — c'est de l'anticipation, pas une

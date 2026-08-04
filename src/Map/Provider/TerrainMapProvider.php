@@ -58,6 +58,17 @@ class TerrainMapProvider implements MapProviderInterface
      */
     public const POISON_SHARE = 0.3;
 
+    /**
+     * Share of the meadow that collapses into pits.
+     *
+     * Cut from the low tail of a third field rather than drawn per tile, so a
+     * hole is a small bowl a few tiles across — a crater — instead of a
+     * scattering of single dark cells. Only grass gives way: taking pits out
+     * of the forest or the shore would move shares that are a contract
+     * elsewhere.
+     */
+    public const HOLE_SHARE = 0.02;
+
     /** Distance between two control points of the coarsest octave, in tiles. */
     private const BASE_CELL = 12;
 
@@ -83,6 +94,7 @@ class TerrainMapProvider implements MapProviderInterface
     {
         $elevation = $this->field();
         $bloom = $this->field();
+        $ground = $this->field();
 
         $levels = $this->quantiles($elevation, [self::WATER_SHARE, 1 - self::FOREST_SHARE]);
         [$waterLevel, $forestLevel] = $levels;
@@ -116,6 +128,8 @@ class TerrainMapProvider implements MapProviderInterface
             ? PHP_FLOAT_MAX
             : $this->quantile($grassBloom, 1 - self::FLOWER_SHARE - self::BRAMBLE_SHARE);
 
+        $holeLevel = $this->quantiles($ground, [self::HOLE_SHARE])[0];
+
         $map = [];
 
         for ($y = 0; $y < $this->lines; $y++) {
@@ -124,6 +138,8 @@ class TerrainMapProvider implements MapProviderInterface
             for ($x = 0; $x < $this->columns; $x++) {
                 $row .= match (true) {
                     MapBuilder::HERBE !== $tiles[$y][$x] => $tiles[$y][$x],
+                    // The ground gives way before anything grows on it.
+                    $ground[$y][$x] <= $holeLevel => MapBuilder::TROU,
                     $bloom[$y][$x] >= $bloomLevel => $this->bloom(),
                     $bloom[$y][$x] >= $brambleLevel => MapBuilder::RONCE,
                     default => $tiles[$y][$x],

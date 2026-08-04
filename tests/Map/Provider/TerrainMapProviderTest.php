@@ -65,12 +65,6 @@ final class TerrainMapProviderTest extends TestCase
     }
 
     /**
-     * Coherence, measured rather than eyeballed: in a generated map nearly
-     * every water tile touches another one, because lakes are contiguous. The
-     * same tiles shuffled — identical composition, no structure — score far
-     * lower. That gap is exactly what the generator adds.
-     */
-    /**
      * Brambles are a collar around the flowers rather than a patch of their
      * own, so a cat walking to its food has to weigh them.
      *
@@ -104,6 +98,12 @@ final class TerrainMapProviderTest extends TestCase
         );
     }
 
+    /**
+     * Coherence, measured rather than eyeballed: in a generated map nearly
+     * every water tile touches another one, because lakes are contiguous. The
+     * same tiles shuffled — identical composition, no structure — score far
+     * lower. That gap is exactly what the generator adds.
+     */
     public function testWaterFormsLakesInsteadOfSprinkles(): void
     {
         $map = (new TerrainMapProvider(24, 70, 7))->getMap();
@@ -123,38 +123,45 @@ final class TerrainMapProviderTest extends TestCase
     }
 
     /**
-     * Flowers are ranked among grass cells, so they grow in meadows rather
+     * Blooms are ranked among grass cells, so they grow in meadows rather
      * than being sprinkled one by one across the map.
+     *
+     * Measured over flowers *and* foxgloves together: the patch is a patch of
+     * blooms, and which species each one turns out to be is drawn per tile
+     * inside it. Counting only the edible ones scores the interleaving, not
+     * the clustering.
      */
     public function testFlowersGrowInPatches(): void
     {
         $map = (new TerrainMapProvider(24, 70, 7))->getMap();
 
-        self::assertGreaterThan(0.8, $this->clustering($map, MapBuilder::FLEUR));
+        self::assertGreaterThan(0.8, $this->clustering($map, MapBuilder::NOURRITURE));
     }
 
     /**
      * Fraction of the tiles of $item having at least one orthogonal neighbour
-     * of the same kind.
+     * of the same kind — one kind, or any of several.
      *
      * @param list<string> $map
+     * @param string|list<string> $item
      */
-    private function clustering(array $map, string $item): float
+    private function clustering(array $map, string|array $item): float
     {
+        $wanted = array_flip((array) $item);
         $grid = array_map(str_split(...), $map);
         $total = 0;
         $touching = 0;
 
         foreach ($grid as $y => $row) {
             foreach ($row as $x => $tile) {
-                if ($tile !== $item) {
+                if (!isset($wanted[$tile])) {
                     continue;
                 }
 
                 $total++;
 
                 foreach ([[0, 1], [0, -1], [1, 0], [-1, 0]] as [$dx, $dy]) {
-                    if (($grid[$y + $dy][$x + $dx] ?? null) === $item) {
+                    if (isset($wanted[$grid[$y + $dy][$x + $dx] ?? ''])) {
                         $touching++;
 
                         break;

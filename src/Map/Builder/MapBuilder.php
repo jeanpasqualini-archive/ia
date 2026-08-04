@@ -30,6 +30,16 @@ class MapBuilder
     public const DIGITALE = 'D';
 
     /**
+     * A pit. Walkable, slow to climb out of, and it hurts several times what
+     * a bramble does.
+     *
+     * Its point is not the damage but the *gradient*: the memory learns in
+     * proportion to the pain, so a cat comes to fear a hole far more than a
+     * thorn without anything having been written down about either.
+     */
+    public const TROU = 'T';
+
+    /**
      * What a cat will walk to when hungry. Both look like a meal; only one
      * is.
      *
@@ -42,7 +52,7 @@ class MapBuilder
 
     /** @var list<string> */
     private const ALLOWED_ITEMS = [
-        self::HERBE, self::ARBRE, self::EAU, self::FLEUR, self::RONCE, self::DIGITALE,
+        self::HERBE, self::ARBRE, self::EAU, self::FLEUR, self::RONCE, self::DIGITALE, self::TROU,
     ];
 
     /**
@@ -68,6 +78,7 @@ class MapBuilder
      */
     private const HURTS = [
         self::RONCE => 1,
+        self::TROU => 4,
     ];
 
     /**
@@ -82,6 +93,12 @@ class MapBuilder
         self::RONCE => 1,
         self::DIGITALE => 1,
         self::ARBRE => 3,
+        // One, like grass, and for the same reason brambles are one: this was
+        // three at first — climbing out ought to cost something — and the
+        // pathfinder then routed round every pit from birth. Six thousand
+        // ticks on three maps and no cat ever fell in, so nothing was ever
+        // learnt. A danger written into the map is not a danger, it is a wall.
+        self::TROU => 1,
         self::EAU => null,
     ];
 
