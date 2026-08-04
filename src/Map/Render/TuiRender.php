@@ -14,6 +14,7 @@ use Map\Player\Chat\Peur;
 use Map\Player\PlayerHasEstomac;
 use Map\Player\PlayerHasPeur;
 use Map\Player\PlayerInterface;
+use Map\Relief;
 use Map\World\World;
 use Map\World\WorldContainer;
 use Memory\MemoryManager;
@@ -191,6 +192,17 @@ class TuiRender implements GameRenderInterface
     public function toggleView(): bool
     {
         return false;
+    }
+
+    /**
+     * Ignored here. Shading the ground costs nothing per frame — it is a
+     * colour, and a colour that does not change is not sent — but the map is
+     * *already* drawn in colour alone, so a slope and a terrain would be
+     * competing to say something with the same thing. The window has shape to
+     * spare and uses it there instead.
+     */
+    public function setRelief(?Relief $relief): void
+    {
     }
 
     public function nextTab(): void

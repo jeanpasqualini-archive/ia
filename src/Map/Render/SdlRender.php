@@ -10,6 +10,7 @@ use Logger\MultipleLogger;
 use Map\Builder\MapBuilder;
 use Map\Path\PathFinder;
 use Map\Player\PlayerInterface;
+use Map\Relief;
 use Map\World\World;
 use Map\World\WorldContainer;
 use Memory\MemoryManager;
@@ -124,6 +125,13 @@ final class SdlRender implements GameRenderInterface
      */
     private ?array $followButton = null;
 
+    /**
+     * The shape of the surface, or null where there is none. Held here and
+     * never by the world: it is regenerated with the map from the same seed,
+     * and anything `World` can reach is serialized into every snapshot.
+     */
+    private ?Relief $relief = null;
+
     public function __construct(
         private MultipleLogger $logger,
         private WorldContainer $worldContainer,
@@ -140,7 +148,10 @@ final class SdlRender implements GameRenderInterface
         // A window always has every colour, so the sixteen colour fallback is
         // never *detected* here — it can still be asked for with --colours,
         // which is how the two renderers are compared on the same palette.
-        $this->palette ??= new TilePalette(trueColor: true);
+        // Twenty four steps rather than the terminal's six: quantising the
+        // swell is a budget of escape sequences, and a window sends none. On a
+        // lake several hundred pixels across, six reads as bands.
+        $this->palette ??= new TilePalette(trueColor: true, swellSteps: 24);
         $this->clock ??= static fn (): float => microtime(true);
         $this->cat = new CatSprite();
         $this->iso = new IsoView($this->palette);
@@ -353,6 +364,22 @@ final class SdlRender implements GameRenderInterface
         return $this->iso->paint($map, $this->camera, $this->isoWidth(), $this->isoHeight(), $cats);
     }
 
+    /**
+     * The same colour, on ground that leans towards the light or away from it.
+     *
+     * The cheapest of the ways of showing a third dimension and the only one
+     * that costs the layout nothing: a tile stays in its cell, so the camera,
+     * the markers and the sight band cannot tell the difference.
+     */
+    private static function lit(int $colour, float $factor): int
+    {
+        $r = max(0, min(255, (int) round((($colour >> 16) & 0xFF) * $factor)));
+        $g = max(0, min(255, (int) round((($colour >> 8) & 0xFF) * $factor)));
+        $b = max(0, min(255, (int) round(($colour & 0xFF) * $factor)));
+
+        return 0xFF000000 | ($r << 16) | ($g << 8) | $b;
+    }
+
     private function isoWidth(): int
     {
         return intdiv($this->mapWidth, 2);
@@ -374,6 +401,12 @@ final class SdlRender implements GameRenderInterface
      */
     public function repaint(): void
     {
+    }
+
+    public function setRelief(?Relief $relief): void
+    {
+        $this->relief = $relief;
+        $this->iso->setRelief($relief);
     }
 
     public function nextTab(): void
@@ -510,7 +543,20 @@ final class SdlRender implements GameRenderInterface
                 }
 
                 $tile = $players[$row][$column] ?? $map[$worldY][$worldX] ?? MapBuilder::HERBE;
-                $pixels->set($column, $row, Pixels::pack($this->palette->pixel($tile, $worldX, $worldY)));
+                $colour = Pixels::pack($this->palette->pixel($tile, $worldX, $worldY));
+
+                // **A lake has a surface, not a slope.** The elevation carries
+                // on below the water line, so lighting a lake draws the bottom
+                // of it as though that were the top and a bay comes out with a
+                // hillside in it. A cat is not ground either: it is the one
+                // thing here that must never be dimmed by where it stands.
+                if (null !== $this->relief
+                    && MapBuilder::EAU !== $tile
+                    && null === TilePalette::playerIndex($tile)) {
+                    $colour = self::lit($colour, $this->relief->light($worldX, $worldY));
+                }
+
+                $pixels->set($column, $row, $colour);
             }
         }
 

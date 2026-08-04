@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Map\Provider;
 
 use Map\Builder\MapBuilder;
+use Map\Relief;
 use Random\Engine\Mt19937;
 use Random\Randomizer;
 
@@ -88,6 +89,13 @@ class TerrainMapProvider implements MapProviderInterface
 
     private Randomizer $randomizer;
 
+    /**
+     * The elevation the terrain was cut out of, kept rather than dropped. It
+     * costs nothing — it is already computed by the time the first tile is
+     * decided — and it is the only honest source of relief there is.
+     */
+    private ?Relief $relief = null;
+
     public function __construct(
         private int $lines,
         private int $columns,
@@ -99,6 +107,16 @@ class TerrainMapProvider implements MapProviderInterface
     }
 
     /**
+     * The ground the map was cut from, once it has been built. Handed to the
+     * renderer and to nothing else: it is a way of looking at the terrain, and
+     * anything reachable from `World` ends up in every snapshot.
+     */
+    public function relief(): ?Relief
+    {
+        return $this->relief;
+    }
+
+    /**
      * @return list<string>
      */
     public function getMap(): array
@@ -106,6 +124,8 @@ class TerrainMapProvider implements MapProviderInterface
         $elevation = $this->field();
         $bloom = $this->field();
         $ground = $this->field();
+
+        $this->relief = Relief::fromField($elevation);
 
         $levels = $this->quantiles($elevation, [
             self::WATER_SHARE,

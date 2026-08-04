@@ -214,8 +214,16 @@ class TilePalette
     /** @var array{0: RgbColor, 1: RgbColor}|null Swell ends, parsed once. */
     private ?array $swell = null;
 
-    public function __construct(private bool $trueColor = false)
-    {
+    public function __construct(
+        private bool $trueColor = false,
+        /**
+         * Steps the swell may take. The default is the terminal's budget; a
+         * window has none — nothing is *sent* there, a texture is uploaded
+         * whole — so it asks for enough that a large lake stops reading as a
+         * flight of bands. The number exists at all only because of the tty.
+         */
+        private int $swellSteps = self::SWELL_STEPS,
+    ) {
     }
 
     /**
@@ -442,7 +450,7 @@ class TilePalette
         ];
 
         [$trough, $crest] = $this->swell;
-        $ratio = round(($height + 2.0) / 4.0 * self::SWELL_STEPS) / self::SWELL_STEPS;
+        $ratio = round(($height + 2.0) / 4.0 * $this->swellSteps) / $this->swellSteps;
 
         return RgbColor::fromRgb(
             (int) round($trough->r + ($crest->r - $trough->r) * $ratio),
@@ -522,6 +530,24 @@ class TilePalette
             MapBuilder::CHAMPIGNON => MapBuilder::GALERIE,
             default => $tile,
         };
+    }
+
+    /**
+     * Where the swell stands on a tile, between 0 in the trough and 1 on the
+     * crest.
+     *
+     * Exposed so the isometric view can put foam on a crest without computing
+     * a *second* wave: two waves meant to be the same one drift apart the
+     * first time either is tuned, and the water would then be coloured by one
+     * and foamed by the other.
+     */
+    public function swellLevel(int $x, int $y): float
+    {
+        $time = $this->phase * self::SWELL_SPEED;
+        $height = sin(($x + $y) * 0.45 - $time)
+            + sin($x * 0.31 - $y * 0.57 + $time * 0.62);
+
+        return max(0.0, min(1.0, ($height + 2.0) / 4.0));
     }
 
     public function sightEdgeColour(): Color

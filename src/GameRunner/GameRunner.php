@@ -837,9 +837,15 @@ class GameRunner
 
     private function createWorld(): World
     {
-        $map = new MapBuilder(
-            $this->mapProvider(self::WORLD_HEIGHT, self::WORLD_WIDTH)->getMap(),
-            $this->logger
+        $provider = $this->mapProvider(self::WORLD_HEIGHT, self::WORLD_WIDTH);
+        $map = new MapBuilder($provider->getMap(), $this->logger);
+
+        // Straight from the provider to the renderer, passing beside the
+        // world: the ground it describes is a way of looking at the map, and
+        // whatever the world can reach is serialized into every snapshot.
+        // Rebuilt here rather than kept, so `r` raises the new map.
+        $this->render->setRelief(
+            $provider instanceof TerrainMapProvider ? $provider->relief() : null
         );
 
         $under = new MapBuilder(

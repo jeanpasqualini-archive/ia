@@ -9,6 +9,7 @@ use Map\Render\IsoView;
 use Map\Render\Pixels;
 use Map\Render\TilePalette;
 use PHPUnit\Framework\TestCase;
+use Map\Provider\TerrainMapProvider;
 use Runtime\Camera;
 
 /**
@@ -144,6 +145,164 @@ final class IsoViewTest extends TestCase
         }
 
         self::assertTrue($found, 'le chat n est pas dans la scene');
+    }
+
+    /**
+     * The ground is raised by the field, which is the whole point of the
+     * isometric view: shading says which way is up, height *is* up.
+     */
+    public function testTheGroundIsRaisedByTheElevation(): void
+    {
+        $meadow = array_fill(0, 80, array_fill(0, 80, 'X'));
+
+        $flat = $this->paint($meadow);
+        $hilly = (new IsoView(new TilePalette(trueColor: true), $this->ramp()))
+            ->paint($meadow, new Camera(), 200, 96);
+
+        $moved = 0;
+
+        for ($y = 0; $y < 96; $y += 2) {
+            for ($x = 0; $x < 200; $x += 2) {
+                if ($flat->at($x, $y) !== $hilly->at($x, $y)) {
+                    ++$moved;
+                }
+            }
+        }
+
+        self::assertGreaterThan(500, $moved, 'le terrain est reste plat');
+    }
+
+    /**
+     * **No hole may open between two tiles of raised ground.**
+     *
+     * The side of a block is its silhouette dropped straight down. The first
+     * version narrowed it by a pixel a row, which finishes in a point, so
+     * every raised tile left two black wedges at its corners and the whole
+     * landscape came out torn. Sky *inside* the ground is the signature, and
+     * it is what this counts.
+     */
+    public function testNoHoleOpensBetweenTwoTilesOfRaisedGround(): void
+    {
+        // Real terrain and not a smooth ramp: a gentle slope lifts
+        // neighbouring tiles by the same amount and hides the fault entirely.
+        // A ramp is what this test used at first, and it passed while a
+        // seventh of the landscape was sky.
+        $provider = new TerrainMapProvider(90, 90, 7);
+        $map = array_map('str_split', $provider->getMap());
+        $camera = new Camera();
+        $camera->centreOn(45, 45);
+
+        $pixels = (new IsoView(new TilePalette(trueColor: true), $provider->relief()))
+            ->paint($map, $camera, 200, 96);
+
+        $holes = 0;
+
+        // Well inside the lattice, where every direction is covered ground.
+        for ($y = 30; $y < 80; $y++) {
+            for ($x = 40; $x < 160; $x++) {
+                if (0xFF0E1418 === $pixels->at($x, $y)) {
+                    ++$holes;
+                }
+            }
+        }
+
+        self::assertSame(0, $holes, 'le paysage est troue');
+    }
+
+    /**
+     * **A lake has a surface, not a slope.** The elevation carries on below
+     * the water line — being low is what made it a lake — so lifting one by
+     * it would draw the bottom of the lake as though that were its top, and a
+     * bay would come out with a hillside in it.
+     */
+    public function testALakeIsNeverRaised(): void
+    {
+        $lake = array_fill(0, 80, array_fill(0, 80, 'E'));
+
+        $flat = $this->paint($lake);
+        $hilly = (new IsoView(new TilePalette(trueColor: true), $this->ramp()))
+            ->paint($lake, new Camera(), 200, 96);
+
+        for ($y = 0; $y < 96; $y += 3) {
+            for ($x = 0; $x < 200; $x += 3) {
+                self::assertSame($flat->at($x, $y), $hilly->at($x, $y), sprintf('le lac a une pente en %d;%d', $x, $y));
+            }
+        }
+    }
+
+    /**
+     * Grass had no asset at all and the ground alone said it, which made the
+     * meadow the one terrain drawn here the way the *map* view draws
+     * everything — a flat colour. A tuft on every tile is a lawn, and the same
+     * tuft on every tile is wallpaper, so both are refused.
+     */
+    public function testTheMeadowHasTuftsAndIsNotACarpetOfThem(): void
+    {
+        $shapes = [];
+        $bare = 0;
+
+        for ($hash = 0; $hash < 60; $hash++) {
+            $tuft = IsoSprites::tuft($hash);
+
+            if (null === $tuft) {
+                ++$bare;
+
+                continue;
+            }
+
+            $shapes[implode('', $tuft['rows'])] = true;
+        }
+
+        self::assertGreaterThan(20, $bare, 'la prairie est une pelouse');
+        self::assertCount(3, $shapes, 'toutes les touffes sont identiques');
+    }
+
+    /**
+     * The foam follows the very wave that colours the water, and breaks only
+     * near its crest. Computed from a second wave the two would drift apart
+     * the first time either was tuned.
+     */
+    public function testTheLakeBreaksOnItsCrestsAndNowhereElse(): void
+    {
+        $palette = new TilePalette(trueColor: true);
+        $palette->animate(1.3);
+
+        $lake = array_fill(0, 80, array_fill(0, 80, 'E'));
+        $pixels = (new IsoView($palette))->paint($lake, new Camera(), 200, 96);
+
+        $foam = 0;
+        $total = 0;
+
+        for ($y = 10; $y < 86; $y++) {
+            for ($x = 10; $x < 190; $x++) {
+                ++$total;
+
+                if (0xFFD8ECF6 === $pixels->at($x, $y)) {
+                    ++$foam;
+                }
+            }
+        }
+
+        self::assertGreaterThan(0, $foam, 'le lac ne casse jamais');
+        self::assertLessThan($total * 0.1, $foam, 'le lac est une nappe d ecume');
+    }
+
+    /** A ramp across the map, so some ground is high and some is low. */
+    private function ramp(): \Map\Relief
+    {
+        $field = [];
+
+        for ($y = 0; $y < 80; $y++) {
+            $row = [];
+
+            for ($x = 0; $x < 80; $x++) {
+                $row[] = (float) ($x + $y);
+            }
+
+            $field[] = $row;
+        }
+
+        return \Map\Relief::fromField($field);
     }
 
     /**

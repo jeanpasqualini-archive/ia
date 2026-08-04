@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Map\Render;
 
 use Map\Player\PlayerInterface;
+use Map\Relief;
 
 /**
  * Everything the game loop asks of whatever is drawing it.
@@ -27,6 +28,13 @@ interface GameRenderInterface extends MapRenderInterface
      * everything every time and has nothing to force.
      */
     public function repaint(): void;
+
+    /**
+     * The shape of the surface, handed over whenever a map is built. Null for
+     * a map that has none — one read from a file was drawn by hand and never
+     * had an elevation to begin with.
+     */
+    public function setRelief(?Relief $relief): void;
 
     public function nextTab(): void;
 

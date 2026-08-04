@@ -129,6 +129,77 @@ final class IsoSprites
     ];
 
     /**
+     * Tufts, for the meadow.
+     *
+     * Grass had no asset at all and the ground alone said it, which made the
+     * meadow the one terrain in the isometric view drawn the way the *map*
+     * view draws everything — a flat colour. Three shapes rather than one, and
+     * only some tiles get any: a tuft on every tile is a lawn, and the same
+     * tuft on every tile is wallpaper. Which one, and whether at all, comes
+     * from the coordinate hash, so it is stable frame after frame for the
+     * reason the terrain grain is.
+     *
+     * @var list<list<string>>
+     */
+    private const TUFTS = [
+        [
+            '.o.o.',
+            'ogogo',
+            '.ggg.',
+        ],
+        [
+            'o...o',
+            'og.go',
+            '.ogo.',
+        ],
+        [
+            '..o..',
+            'o.g.o',
+            '.ggg.',
+        ],
+    ];
+
+    private const TUFT_ANCHOR = [2, 3];
+
+    /**
+     * Foam, put on a crest and nowhere else. Its width is the crest of the
+     * diamond so it reads as the top of a swell rather than as a thing
+     * floating on the lake.
+     *
+     * @var list<string>
+     */
+    private const FOAM = [
+        '.wwww.',
+        'w.ww.w',
+    ];
+
+    private const FOAM_ANCHOR = [3, 4];
+
+    /**
+     * One of the three tufts, or null where this tile has none.
+     *
+     * @return array{rows: list<string>, anchor: array{int, int}}|null
+     */
+    public static function tuft(int $hash): ?array
+    {
+        // Two tiles in five, which is enough to read as a meadow and few
+        // enough that the eye does not find the lattice underneath.
+        if ($hash % 5 >= 2) {
+            return null;
+        }
+
+        return ['rows' => self::TUFTS[$hash % 3], 'anchor' => self::TUFT_ANCHOR];
+    }
+
+    /**
+     * @return array{rows: list<string>, anchor: array{int, int}}
+     */
+    public static function foam(): array
+    {
+        return ['rows' => self::FOAM, 'anchor' => self::FOAM_ANCHOR];
+    }
+
+    /**
      * A cat from the side, which is the one thing the map view cannot say at
      * all: there it is a single coloured tile.
      *

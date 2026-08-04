@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Map\Render;
 
 use Map\Builder\MapBuilder;
+use Map\Relief;
 use Runtime\Camera;
 
 /**
@@ -41,10 +42,32 @@ final class IsoView
     private const TRUNK = 0xFF5A3A22;
     private const STEM = 0xFF3F6B36;
     private const MUSHROOM_STEM = 0xFFC9BB94;
+    private const FOAM = 0xFFD8ECF6;
+
+    /** How high the swell has to stand before it breaks. */
+    private const FOAM_CREST = 0.72;
     private const CAVERN_DARK = 0xFF120E0C;
 
-    public function __construct(private TilePalette $palette)
+    /**
+     * How many pixels the highest ground stands above the lowest.
+     *
+     * Small on purpose. The first relief demo raised a wood ten rows above the
+     * meadow and the picture *shredded* — one read a torn map rather than a
+     * hill, because neighbouring tiles no longer looked like neighbours. The
+     * illusion wants the smallest displacement that still says which way is
+     * up, and a diamond is only eight pixels tall.
+     */
+    private const MAX_LIFT = 10;
+
+    public function __construct(
+        private TilePalette $palette,
+        private ?Relief $relief = null,
+    ) {
+    }
+
+    public function setRelief(?Relief $relief): void
     {
+        $this->relief = $relief;
     }
 
     /**
@@ -64,7 +87,7 @@ final class IsoView
         // (depth + halfWidth) / 2 of each — counting the depth alone gives a
         // lattice that narrows towards the bottom exactly as it does towards
         // the top, and leaves the two lower corners bare.
-        $down = ($height + self::lift($width)) / self::STEP_Y;
+        $down = ($height + self::overhang($width)) / self::STEP_Y;
         $across = $width / (2 * self::STEP_X);
         $side = (int) ceil(($down + $across) / 2) + 2;
 
@@ -72,7 +95,8 @@ final class IsoView
     }
 
     /**
-     * How far above the screen the lattice has to start.
+     * How far above the screen the lattice has to start. Nothing to do with
+     * the ground's own height, which is `lift()`.
      *
      * A diamond lattice fans out from a point, so drawn from the top of the
      * area it leaves the two upper corners bare — the first version did
@@ -81,7 +105,7 @@ final class IsoView
      * lattice has spread half a screen, which takes width / (2 * STEP_X)
      * steps of STEP_Y each.
      */
-    private static function lift(int $width): int
+    private static function overhang(int $width): int
     {
         return intdiv($width * self::STEP_Y, 2 * self::STEP_X);
     }
@@ -109,7 +133,7 @@ final class IsoView
         // sits at the far right of the world shown and the offset is what
         // brings the leftmost diamond back on screen.
         $offsetX = intdiv($width, 2) - self::STEP_X;
-        $offsetY = -self::lift($width);
+        $offsetY = -self::overhang($width);
 
         $diamond = IsoSprites::diamond();
         $columns = $view['x'];
@@ -145,24 +169,34 @@ final class IsoView
                 }
 
                 $tile = $map[$worldY][$worldX] ?? MapBuilder::HERBE;
+                $lift = $this->lift($tile, $worldX, $worldY);
 
                 // The ground is what the tile *stands on*, never the tile's
                 // own colour: a flower is a plant in the meadow, so its
                 // diamond is grass and the bloom is what is drawn on it.
+                // A local, and never `$screenY` itself: that one is computed
+                // once for the whole depth, and subtracting from it inside
+                // the column loop lifted each tile by the sum of the heights
+                // of every tile drawn before it on the same row. The
+                // landscape drifted upwards across each row and tore open
+                // behind itself, which is exactly what it looked like.
+                $top = $screenY - $lift;
+
                 $this->ground(
                     $pixels,
                     $screenX,
-                    $screenY,
+                    $top,
                     $diamond,
                     TilePalette::groundFor($tile),
                     $worldX,
-                    $worldY
+                    $worldY,
+                    $lift
                 );
 
                 $cat = $cats[$worldX . ';' . $worldY] ?? null;
 
                 if (null !== $cat) {
-                    $this->stamp($pixels, IsoSprites::cat(), $screenX, $screenY, $this->catRoles($cat));
+                    $this->stamp($pixels, IsoSprites::cat(), $screenX, $top, $this->catRoles($cat));
 
                     continue;
                 }
@@ -170,7 +204,33 @@ final class IsoView
                 $standing = IsoSprites::standing($tile);
 
                 if (null !== $standing) {
-                    $this->stamp($pixels, $standing, $screenX, $screenY, $this->roles($tile, $worldX, $worldY));
+                    $this->stamp($pixels, $standing, $screenX, $top, $this->roles($tile, $worldX, $worldY));
+
+                    continue;
+                }
+
+                // The lake breaks where the swell stands highest, on the same
+                // wave that gives it its colour rather than on a second one.
+                if (MapBuilder::EAU === $tile) {
+                    if ($this->palette->swellLevel($worldX, $worldY) > self::FOAM_CREST) {
+                        $this->stamp($pixels, IsoSprites::foam(), $screenX, $top, ['w' => self::FOAM]);
+                    }
+
+                    continue;
+                }
+
+                if (MapBuilder::HERBE === $tile) {
+                    $tuft = IsoSprites::tuft(self::grain($worldX, $worldY));
+
+                    if (null !== $tuft) {
+                        $this->stamp($pixels, $tuft, $screenX, $top, [
+                            'o' => self::OUTLINE,
+                            'g' => self::shade(
+                                Pixels::pack($this->palette->pixel($tile, $worldX, $worldY)),
+                                1.45
+                            ),
+                        ]);
+                    }
                 }
             }
         }
@@ -188,11 +248,47 @@ final class IsoView
      *
      * @param list<array{int, int}> $diamond
      */
-    private function ground(Pixels $pixels, int $x, int $y, array $diamond, string $tile, int $worldX, int $worldY): void
-    {
+    private function ground(
+        Pixels $pixels,
+        int $x,
+        int $y,
+        array $diamond,
+        string $tile,
+        int $worldX,
+        int $worldY,
+        int $lift = 0,
+    ): void {
         $colour = Pixels::pack($this->palette->pixel($tile, $worldX, $worldY));
         $lit = self::shade($colour, 1.12);
         $dark = self::shade($colour, 0.78);
+
+        // The side of the block, drawn first and always the full lift: what
+        // of it is hidden by the tile in front is hidden by the painter, and
+        // what shows is exactly the ground that steps down. Without it a
+        // raised tile is a diamond floating over a hole.
+        if ($lift > 0) {
+            // **The silhouette extruded straight down, and never tapered.**
+            // The first version narrowed the side by a pixel a row, which
+            // finishes in a point: every raised tile then left two black
+            // wedges open at its corners, and the whole landscape came out
+            // torn. A block's side is the shape above it dropped vertically —
+            // column by column, from the lowest row of the diamond that covers
+            // it, down by exactly the lift, which lands back on the plane an
+            // unraised tile would have sat on. That is what closes the gaps:
+            // every tile reaches the same floor whatever its height.
+            $left = self::shade($colour, 0.5);
+            $right = self::shade($colour, 0.36);
+
+            foreach (self::silhouette($diamond) as $column => $bottom) {
+                $pixels->rect(
+                    $x + $column,
+                    $y + $bottom + 1,
+                    1,
+                    $lift,
+                    $column < IsoSprites::TILE_WIDTH / 2 ? $left : $right
+                );
+            }
+        }
 
         foreach ($diamond as $row => [$left, $width]) {
             $pixels->rect(
@@ -203,6 +299,53 @@ final class IsoView
                 $row < IsoSprites::TILE_HEIGHT / 2 ? $lit : $dark
             );
         }
+    }
+
+    /**
+     * The lowest row of the diamond covering each column — its underside.
+     *
+     * Computed once and kept: the shape never changes, and it is asked for on
+     * every raised tile of every frame.
+     *
+     * @param list<array{int, int}> $diamond
+     *
+     * @return array<int, int>
+     */
+    private static function silhouette(array $diamond): array
+    {
+        static $cache = null;
+
+        if (null !== $cache) {
+            return $cache;
+        }
+
+        $bottom = [];
+
+        foreach ($diamond as $row => [$left, $width]) {
+            for ($column = $left; $column < $left + $width; $column++) {
+                $bottom[$column] = $row;
+            }
+        }
+
+        return $cache = $bottom;
+    }
+
+    /**
+     * How far a tile stands above the lowest ground.
+     *
+     * **Water is flat, whatever the field says underneath it.** The elevation
+     * carries on below the water line — being low is what made it a lake — so
+     * lifting a lake by it would draw the bottom of the lake as though that
+     * were its surface, and a bay would come out with a hillside in it. A
+     * surface is a surface.
+     */
+    private function lift(string $tile, int $worldX, int $worldY): int
+    {
+        if (null === $this->relief || MapBuilder::EAU === $tile) {
+            return 0;
+        }
+
+        return (int) round($this->relief->heightAt($worldX, $worldY) * self::MAX_LIFT / 255);
     }
 
     /**
@@ -277,6 +420,20 @@ final class IsoView
             'P' => $cat['patch'],
             'E' => $cat['eye'],
         ];
+    }
+
+    /**
+     * The same avalanche hash the palette grains the ground with, so a tuft
+     * keeps its place and its shape frame after frame — drawn afresh each
+     * time, the meadow would crawl.
+     */
+    private static function grain(int $x, int $y): int
+    {
+        $hash = (($x * 0x27D4EB2D) ^ ($y * 0x165667B1)) & 0xFFFFFFFF;
+        $hash ^= $hash >> 15;
+        $hash = ($hash * 0x2545F491) & 0xFFFFFFFF;
+
+        return $hash ^ ($hash >> 13);
     }
 
     private static function shade(int $colour, float $factor): int
