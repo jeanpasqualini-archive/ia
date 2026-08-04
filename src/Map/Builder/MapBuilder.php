@@ -61,6 +61,51 @@ class MapBuilder
         return self::ALLOWED_ITEMS;
     }
 
+    /**
+     * The map is essentially the whole snapshot, and `serialize()` is a poor
+     * way to write it: a tile costs `i:127;s:1:"X";`, some twenty five bytes
+     * for one character. Rows are therefore packed back into strings on the
+     * way out, which took a 256x160 world from 1.07 MB to 42 KB — before the
+     * compression in `Instant` even runs.
+     *
+     * Only the terrain layer is packed. The player layer is sparse — tiles
+     * are written at arbitrary coordinates — and imploding it would silently
+     * move every cat to the start of its row.
+     *
+     * The final layer is not stored at all: it is derived, and rebuilt here.
+     * Neither is the logger, which a frozen map has no business carrying.
+     *
+     * @return array{terrain: array<int, string>, layers: array<string, array<int, array<int, string>>>}
+     */
+    public function __serialize(): array
+    {
+        $layers = $this->layers;
+        unset($layers[self::LAYER_MAP]);
+
+        return [
+            'terrain' => array_map(
+                static fn (array $row): string => implode('', $row),
+                $this->layers[self::LAYER_MAP]
+            ),
+            'layers' => $layers,
+        ];
+    }
+
+    /**
+     * @param array{terrain: array<int, string>, layers: array<string, array<int, array<int, string>>>} $data
+     */
+    public function __unserialize(array $data): void
+    {
+        // The terrain has to come back *first*. Layers are flattened in
+        // insertion order, so restoring it last would repaint the ground over
+        // the players standing on it and every cat would vanish.
+        $this->layers = [self::LAYER_MAP => array_map(mb_str_split(...), $data['terrain'])]
+            + $data['layers'];
+        $this->logger = null;
+
+        $this->updateFinalLayer();
+    }
+
     public function getWidth(): int
     {
         return count($this->layers[self::LAYER_MAP][0] ?? []);

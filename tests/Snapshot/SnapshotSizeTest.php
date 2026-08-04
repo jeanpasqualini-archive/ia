@@ -24,6 +24,37 @@ final class SnapshotSizeTest extends TestCase
         self::assertGreaterThan($small->size(), $big->size(), 'une grande map pese plus lourd');
     }
 
+    /**
+     * A ring of ten snapshots of a large map used to be the difference
+     * between a program that fits in the container and one the kernel kills
+     * with exit 137: unpacked and uncompressed, a 256x160 world cost 1.07 MB
+     * a snapshot and 10.66 MB a ring.
+     *
+     * Under a byte per tile is the property that makes a large map
+     * affordable, and it takes both halves to hold: `serialize()` alone
+     * writes some twenty five bytes a tile, packing the rows brings it to
+     * just over one, and the compression in Instant does the rest.
+     */
+    public function testAFrozenWorldCostsLessThanABytePerTile(): void
+    {
+        $tiles = 60 * 120;
+        $world = WorldFactory::fromRows(array_fill(0, 60, str_repeat('X', 120)));
+
+        self::assertLessThan($tiles, (new Instant($world))->size());
+    }
+
+    public function testAFrozenWorldStillComesBackWhole(): void
+    {
+        $world = WorldFactory::fromRows(['XXFY', 'EXXX']);
+        $restored = (new Instant($world))->getData();
+
+        self::assertInstanceOf($world::class, $restored);
+        self::assertSame(
+            $world->getMap()->getFinalMap(),
+            $restored->getMap()->getFinalMap()
+        );
+    }
+
     public function testTheFlashMemorySumsWhatItHolds(): void
     {
         $memory = new FlashMemory(3);

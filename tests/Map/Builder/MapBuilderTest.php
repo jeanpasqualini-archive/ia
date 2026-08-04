@@ -97,4 +97,59 @@ final class MapBuilderTest extends TestCase
 
         self::assertNull($map->getItem(new Point(50, 50)));
     }
+
+    /**
+     * Terrain rows are packed back into strings on the way out, which is what
+     * makes a snapshot of a large map affordable. The player layer must not
+     * be: it is sparse, written at whatever coordinates the cats stand on,
+     * and imploding it would quietly move every one of them to the start of
+     * its row.
+     */
+    public function testSerialisationKeepsTheSparsePlayerLayerWhereItIs(): void
+    {
+        $map = new MapBuilder(['XXFX', 'XEXX', 'XXXX']);
+        $map->setItem(new Point(3, 2), '1', MapBuilder::LAYER_PLAYER);
+        $map->updateFinalLayer();
+
+        $restored = unserialize(serialize($map));
+
+        self::assertInstanceOf(MapBuilder::class, $restored);
+        self::assertSame('1', $restored->getItem(new Point(3, 2), MapBuilder::LAYER_PLAYER));
+        self::assertSame($map->getFinalMap(), $restored->getFinalMap(), 'la carte a plat est identique');
+    }
+
+    public function testSerialisationPreservesEveryTerrainTile(): void
+    {
+        $rows = ['XXFYE', 'EEXXF', 'YXEXX'];
+        $map = new MapBuilder($rows);
+
+        $restored = unserialize(serialize($map));
+
+        self::assertInstanceOf(MapBuilder::class, $restored);
+        self::assertSame($map->getWidth(), $restored->getWidth());
+        self::assertSame($map->getHeight(), $restored->getHeight());
+
+        foreach ($rows as $y => $row) {
+            foreach (str_split($row) as $x => $tile) {
+                self::assertSame($tile, $restored->getItem(new Point($x, $y)), sprintf('tuile %d;%d', $x, $y));
+            }
+        }
+    }
+
+    /**
+     * The flattened layer is derived, so it is not stored — it has to come
+     * back rebuilt rather than empty, since the renderer reads nothing else.
+     */
+    public function testTheFlattenedLayerIsRebuiltRatherThanStored(): void
+    {
+        $map = new MapBuilder(['XF', 'EY']);
+        $frozen = serialize($map);
+
+        self::assertStringNotContainsString('finalLayer', $frozen);
+
+        $restored = unserialize($frozen);
+
+        self::assertInstanceOf(MapBuilder::class, $restored);
+        self::assertNotSame([], $restored->getFinalMap());
+    }
 }
