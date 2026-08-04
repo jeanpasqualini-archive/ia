@@ -24,8 +24,17 @@ use PhpTui\Tui\Text\Span;
  * make the map shimmer fifteen times a second. Hashing the coordinates gives
  * a stable grain for free, with no state to keep.
  *
- * True colour is not universal — Terminal.app still tops out at 256 — so a
- * sixteen colour fallback is kept. It cannot express shades and does not try.
+ * **Water is the exception, and is the only thing here that moves.** It is
+ * drawn from a swell — two travelling waves summed — read from a phase in
+ * seconds of wall clock that `animate()` sets once per frame. Ground is
+ * still; a lake that were would be the one thing on this map that looks
+ * painted on.
+ *
+ * True colour is not universal, so a sixteen colour fallback is kept. It
+ * cannot express shades and does not try. Which one is used comes from
+ * `COLORTERM`, which is *inherited* and therefore wrong in both directions —
+ * hence `--colours`, which settles it by hand rather than by guessing at the
+ * far end of the pipe.
  *
  * **The map is drawn in colour alone.** A tile is half a cell — two of them
  * share one character, an upper half block whose foreground is the tile above
@@ -56,6 +65,9 @@ class TilePalette
         // Deeper and colder than open forest, so the heart of a wood reads as
         // somewhere one does not walk through lightly.
         MapBuilder::FOURRE => ['#12291a', '#0e2215', '#163020', '#102616'],
+        // The still water, kept for the panel and for the sixteen colour
+        // fallback. On the map itself the lake is drawn by swell() instead,
+        // which is the one thing here that moves.
         MapBuilder::EAU => ['#1f4f7a', '#265a8a', '#1a4468', '#22537f'],
         // Nearly black: a hole is an absence, and it should read as one next
         // to ground that is merely dark.
@@ -90,6 +102,44 @@ class TilePalette
     private const MUSHROOM = '#e8d9b0';
 
     /**
+     * The trough and the crest of the swell, interpolated between rather than
+     * stepped through.
+     *
+     * Everything else on this map picks one of four shades because its grain
+     * is a hash and four draws are enough to break the flatness. A wave is
+     * continuous, and quantising it to four steps draws contour lines instead
+     * of water — the bands would be exactly what one sees.
+     */
+    private const SWELL_TROUGH = '#1a4468';
+
+    private const SWELL_CREST = '#2a6396';
+
+    /** Radians a second the swell travels. Slow: a lake is not a river. */
+    private const SWELL_SPEED = 1.4;
+
+    /**
+     * Steps the swell is allowed to take between trough and crest.
+     *
+     * **This number is a bandwidth budget, not a taste.** php-tui sends the
+     * terminal only the cells that changed since the last frame, so a
+     * *continuous* colour guarantees that every cell of every lake changed:
+     * measured, 93% of water tiles a frame, which came to 35 070 bytes of
+     * escape sequences a frame — half a megabyte a second, forever. Quantised
+     * to six levels a tile only speaks when the wave carries it over a step:
+     * 8% of tiles, 4 980 bytes, 73 KB/s.
+     *
+     * That is not an optimisation, it is the difference between a terminal
+     * that keeps up and one that does not — and a write to the tty *blocks*,
+     * so a terminal that cannot swallow the frame stalls the simulation behind
+     * it, not just the picture.
+     *
+     * The wave itself is unchanged: same crests, same drift. The slope becomes
+     * a flight of plateaus, which on moving water reads as ripples, and is the
+     * same vocabulary as the four hashed shades every other terrain uses.
+     */
+    private const SWELL_STEPS = 5;
+
+    /**
      * The far edge of what a cat can see.
      *
      * One flat colour whatever is underneath, because it is an overlay and
@@ -105,31 +155,111 @@ class TilePalette
      * a grid of one-column tiles it would eat its neighbour and shift the rest
      * of the row. Cats get emoji in the side panel instead, where text flows.
      *
-     * @var list<array{glyph: string, color: string}>
+     * The second colour is a *darker fur of the same animal*, never a cream or
+     * a white. Two of them were, and the right half of the cat melted into the
+     * cloud it was sitting on: `#ffe3d2` against a `#f4f7fb` cloud is no edge
+     * at all, so what one saw was a red shape, a pale shape and some white,
+     * rather than one cat. A marking has to stay darker than the sky it is
+     * drawn against.
+     *
+     * @var list<array{glyph: string, color: string, patch: string}>
      */
     private const PLAYERS = [
-        ['glyph' => '●', 'color' => '#ff5c5c'],
-        ['glyph' => '◆', 'color' => '#ffd24a'],
-        ['glyph' => '▲', 'color' => '#6ec1ff'],
-        ['glyph' => '★', 'color' => '#d98cf0'],
+        ['glyph' => '●', 'color' => '#ff5c5c', 'patch' => '#9e3535'],
+        ['glyph' => '◆', 'color' => '#ffd24a', 'patch' => '#8a5a1c'],
+        ['glyph' => '▲', 'color' => '#6ec1ff', 'patch' => '#2c5f8f'],
+        ['glyph' => '★', 'color' => '#d98cf0', 'patch' => '#6b3a8a'],
     ];
 
     private const PLAYER_BG = '#20201c';
 
+    /**
+     * What every floating cat shares, whichever player it belongs to. Only the
+     * coat tells them apart — eyes and muzzle at this size are two tiles and
+     * three, and colouring those per cat would say nothing anyone could read.
+     */
+    /**
+     * Amber, because the eye has to land on the bright fur and on the dark
+     * marking alike — one tile has no room to be legible on only one of them.
+     * It is also what a cat's eye actually is.
+     */
+    private const CAT_EYE = '#ffe98a';
+
+    private const CAT_SNOUT = '#f2a6ad';
+
+    /**
+     * The line round the whole animal. Near black rather than a dark version
+     * of the coat: the point is to separate the cat from *whatever* is behind
+     * it, and the meadow, the lake and the wood are not the same colour.
+     */
+    private const CAT_OUTLINE = '#14110f';
+
+    private const CLOUD = '#f4f7fb';
+
+    private const CLOUD_SHADE = '#c2ccda';
+
     /** @var array<string, Style> */
     private array $cache = [];
+
+    /**
+     * Where the swell stands, in seconds.
+     *
+     * Seconds of wall clock, never ticks: an animation is a way of looking at
+     * the simulation and not something the world does, exactly like the
+     * camera. Read from the tick it would boil at x1000 and stop dead while
+     * paused — which is how the game starts.
+     */
+    private float $phase = 0.0;
+
+    /** @var array{0: RgbColor, 1: RgbColor}|null Swell ends, parsed once. */
+    private ?array $swell = null;
 
     public function __construct(private bool $trueColor = false)
     {
     }
 
     /**
+     * Move the water on. Called once per frame, so a whole frame is drawn at
+     * a single instant — read per tile, the top of the screen would be older
+     * than the bottom.
+     */
+    public function animate(float $seconds): void
+    {
+        $this->phase = $seconds;
+    }
+
+    /**
      * True colour terminals advertise themselves through COLORTERM. Anything
      * silent is assumed to be limited to the ANSI palette.
      */
+    /**
+     * How many colours the terminal can be given: 16, or all of them.
+     *
+     * **There is deliberately no 256 colour rung, and it was tried.** The
+     * xterm cube steps each channel through 0, 95, 135, 175, 215, 255, and
+     * this map's palette sits in the first gap: three of the four meadow
+     * greens (`#3f6b36`, `#375f30`, `#436f39`) land on `#5f5f5f`, which is a
+     * *grey*. All four greens of the wood collapse onto one entry, and the
+     * thicket and the bramble both come out pure black. That is not a coarser
+     * picture — the meadow stops meaning meadow, which is worse than the flat
+     * sixteen colour map, where at least green stays green.
+     *
+     * **`COLORTERM` is inherited, so it is wrong in both directions.** It
+     * describes the terminal that started the shell rather than the one
+     * drawing the frame: exported from a profile, or carried across an ssh or
+     * a tmux, it speaks for something else entirely. There was a table of
+     * terminals to disbelieve here, holding Terminal.app on the grounds that
+     * it has no 24 bit colour — measured on a real one, it has. Guessing at
+     * the far end of the pipe is what `--colours` exists to stop.
+     */
+    public static function depth(): int
+    {
+        return in_array(getenv('COLORTERM'), ['truecolor', '24bit'], true) ? 16777216 : 16;
+    }
+
     public static function detect(): self
     {
-        return new self(in_array(getenv('COLORTERM'), ['truecolor', '24bit'], true));
+        return new self(self::depth() > 16);
     }
 
     /**
@@ -261,9 +391,11 @@ class TilePalette
         // Sixteen colours can still stack two tiles in a cell — a foreground
         // and a background is all it takes — they simply have sixteen answers
         // rather than shades. Handing back a true colour here would emit
-        // escapes such a terminal cannot honour.
+        // escapes such a terminal cannot honour. It also means the lake is
+        // still there: one blue is one blue, and a swell has nothing to move
+        // through.
         if (!$this->trueColor) {
-            return $this->ansi($tile)->bg ?? AnsiColor::Black;
+            return $this->ansiPixel($tile);
         }
 
         $variant = $this->variant($x, $y);
@@ -274,6 +406,7 @@ class TilePalette
         }
 
         return match ($tile) {
+            MapBuilder::EAU => $this->swell($x, $y),
             MapBuilder::FLEUR => RgbColor::fromHex(self::BLOOMS[$variant]),
             MapBuilder::DIGITALE => RgbColor::fromHex(self::POISON),
             MapBuilder::RONCE => RgbColor::fromHex(self::THORN),
@@ -282,9 +415,135 @@ class TilePalette
         };
     }
 
+    /**
+     * The one terrain that moves.
+     *
+     * **Two waves rather than one.** A single travelling band is a ruler
+     * sliding across the lake and its period is plain within a second; summed
+     * at different angles, wavelengths and speeds, the crests meet somewhere
+     * new each time and the water never quite repeats. It is the same problem
+     * the hashed grain solves for the ground, and the same answer: what the
+     * eye must not find is a period.
+     *
+     * The lake is drawn from world coordinates like everything else, so the
+     * swell stays where it is while the view slides over it — panning must not
+     * push the water along.
+     */
+    private function swell(int $x, int $y): Color
+    {
+        $time = $this->phase * self::SWELL_SPEED;
+
+        $height = sin(($x + $y) * 0.45 - $time)
+            + sin($x * 0.31 - $y * 0.57 + $time * 0.62);
+
+        $this->swell ??= [
+            RgbColor::fromHex(self::SWELL_TROUGH),
+            RgbColor::fromHex(self::SWELL_CREST),
+        ];
+
+        [$trough, $crest] = $this->swell;
+        $ratio = round(($height + 2.0) / 4.0 * self::SWELL_STEPS) / self::SWELL_STEPS;
+
+        return RgbColor::fromRgb(
+            (int) round($trough->r + ($crest->r - $trough->r) * $ratio),
+            (int) round($trough->g + ($crest->g - $trough->g) * $ratio),
+            (int) round($trough->b + ($crest->b - $trough->b) * $ratio),
+        );
+    }
+
+    /**
+     * A tile as one of the sixteen, for the half block view.
+     *
+     * **It cannot be read off {@see ansi()}, and reading it off the background
+     * was a bug that emptied the map.** That method describes a *cell*: a
+     * flower is a magenta character standing on a green background, because
+     * the terrain is the background and the plant is the glyph. Take the
+     * background of it and a flower, a foxglove and a bramble all come back
+     * green — the same green as the meadow they grow in. Over four thousand
+     * of them vanished into the grass, and the sixteen colour map came out
+     * looking like a lawn.
+     *
+     * Here there is no cell to split: a tile is half of one and has a single
+     * colour, so what matters is *what is there* rather than what it stands
+     * on. Sixteen colours barely stretch to it — the thicket has to borrow the
+     * grey of the rock, and the bramble takes red for want of a dark left.
+     */
+    private function ansiPixel(string $tile): AnsiColor
+    {
+        $index = self::playerIndex($tile);
+
+        if (null !== $index) {
+            return match ($index % 4) {
+                0 => AnsiColor::LightRed,
+                1 => AnsiColor::LightYellow,
+                2 => AnsiColor::LightBlue,
+                default => AnsiColor::LightMagenta,
+            };
+        }
+
+        return match ($tile) {
+            MapBuilder::HERBE => AnsiColor::LightGreen,
+            MapBuilder::ARBRE => AnsiColor::Green,
+            MapBuilder::FOURRE => AnsiColor::DarkGray,
+            MapBuilder::EAU => AnsiColor::Blue,
+            MapBuilder::TROU => AnsiColor::Black,
+            // The plants, which the background hid. Each one has to be a
+            // colour of its own or the thing a cat has to learn is invisible.
+            MapBuilder::FLEUR => AnsiColor::Magenta,
+            MapBuilder::DIGITALE => AnsiColor::LightCyan,
+            MapBuilder::RONCE => AnsiColor::Red,
+            MapBuilder::CHAMPIGNON => AnsiColor::White,
+            MapBuilder::CAVERNE => AnsiColor::Yellow,
+            MapBuilder::ROCHE => AnsiColor::DarkGray,
+            MapBuilder::GALERIE => AnsiColor::Gray,
+            default => AnsiColor::LightGreen,
+        };
+    }
+
     public function sightEdgeColour(): Color
     {
         return RgbColor::fromHex(self::SIGHT_EDGE);
+    }
+
+    /**
+     * Everything {@see CatSprite} needs to paint one floating cat.
+     *
+     * The coat starts from the colour the cat is already drawn with on the
+     * map, so the marker and the dot it hangs over are visibly the same
+     * animal — read from two tables they would drift apart the first time one
+     * of them was edited. The second colour is what makes it a coat rather
+     * than a silhouette.
+     *
+     * @return array<string, Color>
+     */
+    public function catColours(int $player): array
+    {
+        $cat = self::PLAYERS[$player % count(self::PLAYERS)];
+
+        if (!$this->trueColor) {
+            // Sixteen colours have nothing to spare for a second shade of the
+            // same fur, so the patch takes white: the split still reads, and
+            // nothing pretends to a subtlety the terminal cannot draw.
+            return [
+                'coat' => $this->ansi((string) (($player % 9) + 1))->fg ?? AnsiColor::White,
+                'patch' => AnsiColor::DarkGray,
+                'eye' => AnsiColor::LightYellow,
+                'snout' => AnsiColor::LightRed,
+                'cloud' => AnsiColor::White,
+                'shade' => AnsiColor::Gray,
+                'outline' => AnsiColor::Black,
+            ];
+        }
+
+        return [
+            'coat' => RgbColor::fromHex($cat['color']),
+            'patch' => RgbColor::fromHex($cat['patch']),
+            'eye' => RgbColor::fromHex(self::CAT_EYE),
+            'snout' => RgbColor::fromHex(self::CAT_SNOUT),
+            'cloud' => RgbColor::fromHex(self::CLOUD),
+            'shade' => RgbColor::fromHex(self::CLOUD_SHADE),
+            'outline' => RgbColor::fromHex(self::CAT_OUTLINE),
+        ];
     }
 
     private function shade(string $tile, int $variant): Color

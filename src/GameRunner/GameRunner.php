@@ -11,6 +11,7 @@ use Audio\SoundEffect;
 use InputController\InputControllerInterface;
 use InputController\MouseAction;
 use InputController\MouseInput;
+use InputController\SdlInput;
 use InputController\TerminalInputController;
 use Logger\FileLogger;
 use Logger\MultipleLogger;
@@ -21,6 +22,9 @@ use Map\Provider\FileMapProvider;
 use Map\Provider\MapProviderInterface;
 use Map\Provider\TerrainMapProvider;
 use Map\Provider\UndergroundMapProvider;
+use Map\Render\GameRenderInterface;
+use Map\Render\SdlRender;
+use Map\Render\TilePalette;
 use Map\Render\TuiRender;
 use Map\World\World;
 use Map\World\WorldContainer;
@@ -36,6 +40,21 @@ class GameRunner
 {
     /** How long the loop sleeps while it has nothing to compute. */
     private const IDLE_DELAY = 20_000;
+
+    /**
+     * Seconds between two frames drawn for the animation alone.
+     *
+     * The water is animated from the clock rather than from the tick, so at a
+     * slow speed a frame lasts longer than the animation wants: at x0.25 the
+     * loop holds a frame for a quarter of a second and the swell would advance
+     * four times a second. The wait is broken up instead.
+     *
+     * **Only while the world is running.** Paused or in the time machine the
+     * screen is drawn once and left alone: a lake that kept rippling with
+     * nothing else moving would hold the terminal busy for as long as the game
+     * is open, and that is most of the time it is open.
+     */
+    private const ANIMATION_PERIOD = 1 / TimeControl::RENDER_RATE;
 
     /** Ticks between two memory readings written to the log. */
     private const MEMORY_CHECK_EVERY = 50;
@@ -77,6 +96,9 @@ class GameRunner
 
     private int $lastFrameTicks = 0;
 
+    /** When the screen was last painted, whatever the reason. */
+    private float $lastDrawAt = 0.0;
+
     private int $frame = 0;
 
     private ?string $mapFile = null;
@@ -89,6 +111,20 @@ class GameRunner
     private bool $sound = true;
 
     private bool $mouse = true;
+
+    /**
+     * Draw in a window rather than in the terminal. The loop is untouched by
+     * it: both renderers answer the same interface and both inputs speak the
+     * same keys, so the choice is made once, here.
+     */
+    private bool $window = false;
+
+    /**
+     * Set only when --colours forced it. COLORTERM is inherited, so detection
+     * is wrong in both directions: it promises 24 bit colour to a terminal
+     * that has none, and says nothing about one that has it.
+     */
+    private ?TilePalette $palette = null;
 
     /**
      * Where a drag started, in screen columns and rows. Null when no button
@@ -117,7 +153,7 @@ class GameRunner
 
     private MemoryUsage $memoryUsage;
 
-    private TuiRender $render;
+    private GameRenderInterface $render;
 
     private InputControllerInterface $input;
 
@@ -167,6 +203,14 @@ class GameRunner
         if (!empty($options['no-mouse'])) {
             $this->mouse = false;
         }
+
+        if (!empty($options['window'])) {
+            $this->window = true;
+        }
+
+        if (isset($options['colours']) && '' !== $options['colours']) {
+            $this->palette = new TilePalette(trueColor: 16 !== (int) $options['colours']);
+        }
     }
 
     public function execute(): int
@@ -176,7 +220,9 @@ class GameRunner
 
         $this->worldContainer = new WorldContainer();
         $this->memoryManager = new MemoryManager($this->flashName);
-        $this->input = new TerminalInputController($this->terminal);
+        $this->input = $this->window
+            ? new SdlInput()
+            : new TerminalInputController($this->terminal);
 
         // Started before the alternate screen is taken: synthesizing the
         // theme costs a moment, and SDL is entitled to complain on stderr —
@@ -187,16 +233,30 @@ class GameRunner
         );
         $this->audio->start();
 
-        $this->render = new TuiRender(
-            $this->terminal,
-            $this->logger,
-            $this->worldContainer,
-            $this->memoryManager,
-            $this->timeControl,
-            audio: $this->audio,
-            camera: $this->camera,
-            mouse: $this->mouse
-        );
+        // The window and the terminal share the camera, the palette and the
+        // dashboard's content, so the same seed shows the same world moved the
+        // same way in either. Only the drawing differs.
+        $this->render = $this->window
+            ? new SdlRender(
+                $this->logger,
+                $this->worldContainer,
+                $this->memoryManager,
+                $this->timeControl,
+                palette: $this->palette,
+                camera: $this->camera,
+                memoryUsage: $this->memoryUsage,
+            )
+            : new TuiRender(
+                $this->terminal,
+                $this->logger,
+                $this->worldContainer,
+                $this->memoryManager,
+                $this->timeControl,
+                palette: $this->palette,
+                audio: $this->audio,
+                camera: $this->camera,
+                mouse: $this->mouse
+            );
 
         try {
             $this->render->init();
@@ -215,6 +275,11 @@ class GameRunner
                 // past, which is exactly when advance() computes nothing.
                 $this->audio->tick();
 
+                // Nothing is redrawn here on purpose. The water is the only
+                // thing that moves by itself, and a paused world whose lake
+                // still rippled would keep the terminal busy for as long as
+                // the game is left open — which is most of the time it is.
+                // Paused, the frame is drawn once and the tty goes quiet.
                 if (!$this->advance()) {
                     usleep(self::IDLE_DELAY);
                 }
@@ -275,19 +340,41 @@ class GameRunner
         $this->checkMemory();
         $this->draw();
 
-        // Sleep only what is left of the frame budget. Sleeping the full
-        // delay after an already late frame is how a loop that is merely
-        // behind becomes hopelessly behind.
+        // Hold the frame until its budget is spent, and no longer: a deadline
+        // taken from the start of the frame is what keeps a loop that is
+        // merely late from becoming hopelessly late.
         if (!$this->timeControl->isPaused()) {
-            $spent = (int) ((microtime(true) - $now) * 1_000_000);
-            $remaining = $this->timeControl->frameDelay() - $spent;
-
-            if ($remaining > 0) {
-                usleep($remaining);
-            }
+            $this->waitUntil($now + $this->timeControl->frameDelay() / 1_000_000);
         }
 
         return true;
+    }
+
+    /**
+     * Sleep to a deadline in slices, letting the animation run meanwhile.
+     *
+     * At x1 and above the whole wait is shorter than a period and this is one
+     * usleep, as it was before. Below it — x0.25 holds a frame for a quarter
+     * of a second — the wait is what the water would otherwise be missing.
+     */
+    private function waitUntil(float $deadline): void
+    {
+        while (($left = $deadline - microtime(true)) > 0) {
+            usleep((int) (min($left, self::ANIMATION_PERIOD) * 1_000_000));
+            $this->animate();
+        }
+    }
+
+    /**
+     * Redraw if the animation is due one. The decision lives here rather than
+     * at the call sites so a frame that has just been drawn for a real reason
+     * is never drawn twice.
+     */
+    private function animate(): void
+    {
+        if (microtime(true) - $this->lastDrawAt >= self::ANIMATION_PERIOD) {
+            $this->draw();
+        }
     }
 
     private function pumpInput(): void
@@ -326,6 +413,9 @@ class GameRunner
             'z' => $this->zoom(closer: true),
             'Z' => $this->zoom(closer: false),
             'c' => $this->focusPlayer(),
+            // Ctrl+L, as everywhere else, plus a plain letter because in raw
+            // mode a control character is not always what reaches us.
+            "\f", 'f' => $this->repaint(),
             InputControllerInterface::UP => $this->look(0, -1),
             InputControllerInterface::DOWN => $this->look(0, 1),
             InputControllerInterface::LEFT => $this->look(-1, 0),
@@ -464,6 +554,23 @@ class GameRunner
      * Bring the cat shown in the AI panel back into view. With a world eight
      * screens across, losing one is a matter of a few seconds at speed.
      */
+    /**
+     * Throw the whole screen away and paint it again.
+     *
+     * **A frame is only ever what changed since the last one**, which is what
+     * keeps the terminal to a few kilobytes a second — and what makes any byte
+     * the terminal loses or misreads a permanent mark: nothing will ever paint
+     * over it, because as far as the renderer is concerned that cell is
+     * already correct. There has to be a way out of that by hand, and it is
+     * the same key every full screen program has had for forty years.
+     */
+    private function repaint(): bool
+    {
+        $this->render->repaint();
+
+        return true;
+    }
+
     private function focusPlayer(): bool
     {
         if (!$this->render->focusOnSelectedPlayer()) {
@@ -643,6 +750,8 @@ class GameRunner
 
     private function draw(): void
     {
+        $this->lastDrawAt = microtime(true);
+
         // The view follows the cat the panel is describing, down a cavern and
         // back up. Watching an empty surface while the cat one has selected is
         // underground would be the worst of both.

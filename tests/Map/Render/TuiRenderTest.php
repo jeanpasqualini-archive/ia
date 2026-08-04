@@ -77,6 +77,97 @@ final class TuiRenderTest extends TestCase
         self::assertArrayHasKey($palette->pixel('2', 1, 1)->toHex(), $colours, 'le second, distinct');
     }
 
+    /**
+     * The water is animated from the clock, so a frame drawn later is a
+     * different frame. Read once at the top of render() and not per tile:
+     * this only checks that the instant reaches the lake at all, which is the
+     * wiring the palette's own tests cannot see.
+     */
+    public function testTheWaterIsRedrawnAsTimePasses(): void
+    {
+        $backend = new RecordingBackend(100, 30);
+        $seconds = 0.0;
+        $render = $this->render(backend: $backend, clock: static function () use (&$seconds): float {
+            return $seconds;
+        });
+
+        $lake = array_fill(0, 8, array_fill(0, 8, 'E'));
+
+        $render->render($lake);
+        $before = $backend->coloursOverMap(8, 4);
+
+        $seconds = 0.6;
+        $render->render($lake);
+
+        self::assertNotSame($before, $backend->coloursOverMap(8, 4), 'le lac est fige');
+    }
+
+    /**
+     * A cat on this map is one tile out of forty thousand. The marker is what
+     * makes it findable, so what matters is that it lands over the right one:
+     * built from view tiles and player positions, an off-by-one here points
+     * at a cat that is not there.
+     */
+    public function testAFloatingCatHangsOverThePlayer(): void
+    {
+        $backend = new RecordingBackend(100, 30);
+        $container = new WorldContainer();
+        $container->setWorld(WorldFactory::fromRows(array_fill(0, 40, str_repeat('X', 64)), chatX: 20, chatY: 20));
+
+        $this->render(container: $container, backend: $backend)->render(
+            array_fill(0, 40, array_fill(0, 64, 'X'))
+        );
+
+        $palette = new TilePalette(trueColor: true);
+        $coat = $palette->catColours(0)['coat']->toHex();
+        $cloud = $palette->catColours(0)['cloud']->toHex();
+
+        // Tiles are half cells: the cat stands on tile row 20, so its marker
+        // is in the cell rows just above row 10.
+        $above = $backend->cellAt(21, 7);
+        self::assertNotNull($above, 'rien au dessus du chat');
+
+        $painted = [];
+
+        for ($row = 1; $row <= 10; $row++) {
+            for ($column = 15; $column <= 27; $column++) {
+                foreach ([$backend->cellAt($column, $row)?->fg, $backend->cellAt($column, $row)?->bg] as $colour) {
+                    if ($colour instanceof \PhpTui\Tui\Color\RgbColor) {
+                        $painted[$colour->toHex()] = true;
+                    }
+                }
+            }
+        }
+
+        self::assertArrayHasKey($coat, $painted, 'le pelage');
+        self::assertArrayHasKey($cloud, $painted, 'le nuage');
+    }
+
+    /**
+     * A frame is only what changed since the last one, which is what keeps the
+     * terminal to a few kilobytes a second and what makes any byte it loses a
+     * permanent mark: the renderer believes that cell is already right and
+     * will never paint it again. Forcing a repaint is the only way out, so it
+     * has to actually send every cell.
+     */
+    public function testAForcedRepaintSendsTheWholeScreenAgain(): void
+    {
+        $backend = new RecordingBackend(100, 30);
+        $render = $this->render(backend: $backend, clock: static fn (): float => 0.0);
+        $map = array_fill(0, 24, array_fill(0, 64, 'X'));
+
+        $render->render($map);
+        $full = $backend->lastUpdates();
+
+        $render->render($map);
+        self::assertLessThan($full / 10, $backend->lastUpdates(), 'une frame ordinaire repeint tout');
+
+        $render->repaint();
+        $render->render($map);
+
+        self::assertGreaterThanOrEqual($full, $backend->lastUpdates(), 'le rafraichissement ne repeint pas tout');
+    }
+
     public function testTheControlBarShowsTheTimeState(): void
     {
         $time = new TimeControl();
@@ -518,6 +609,7 @@ final class TuiRenderTest extends TestCase
         ?Camera $camera = null,
         ?TilePalette $palette = null,
         ?Backend $backend = null,
+        ?\Closure $clock = null,
     ): TuiRender {
         $terminal = Terminal::new(
             AnsiPainter::new(StringWriter::new()),
@@ -539,6 +631,7 @@ final class TuiRenderTest extends TestCase
             palette: $palette ?? new TilePalette(trueColor: true),
             audio: $audio,
             camera: $camera ?? new Camera(),
+            clock: $clock,
         );
     }
 

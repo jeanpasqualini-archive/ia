@@ -3,7 +3,7 @@
 DC  := docker-compose
 RUN := $(DC) run --rm app
 
-.PHONY: help build install run play test shell logs clean
+.PHONY: help build install run play test shell logs clean demo window
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -31,6 +31,17 @@ run: install app/log ## Play the game in the container (full screen, no sound)
 # container does, so `make logs` works either way.
 play: install app/log ## Play on the host PHP, with sound (needs php and libsdl2)
 	php ./console --log app/log/dev.log $(ARGS)
+
+# Beside the game and not in it: a still picture printed to the normal screen,
+# to be looked at once and then taken up or deleted. Run on the host, where
+# the terminal has the true colour it needs.
+demo: install ## Print a 2.5D sketch of the map (ARGS="--mode=iso --seed=3")
+	php demo/relief.php $(ARGS)
+
+# The container has no display, exactly as it has no sound card, so this is a
+# host target like `play`. It needs libsdl2, which the sound already did.
+window: install app/log ## Play in an SDL window instead of the terminal
+	php ./console --window --log app/log/dev.log $(ARGS)
 
 test: install ## Run the test suite
 	$(RUN) ./vendor/bin/phpunit

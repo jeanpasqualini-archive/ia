@@ -201,6 +201,49 @@ final class TilePaletteTest extends TestCase
         }
     }
 
+    /**
+     * The bug that emptied the sixteen colour map: `pixel()` used to read the
+     * *background* of the cell, and a flower is a magenta character standing
+     * on a green background. So every flower, foxglove and bramble came back
+     * the exact green of the meadow — four thousand of them a map, gone into
+     * the grass.
+     *
+     * A tile is half a cell now and has one colour. What is there has to win
+     * over what it stands on.
+     */
+    public function testNothingGrowingOnTheGrassIsPaintedAsGrass(): void
+    {
+        $palette = new TilePalette(trueColor: false);
+        $grass = $palette->pixel(MapBuilder::HERBE, 0, 0);
+
+        foreach ([MapBuilder::FLEUR, MapBuilder::DIGITALE, MapBuilder::RONCE, MapBuilder::TROU] as $tile) {
+            self::assertNotSame(
+                $grass,
+                $palette->pixel($tile, 0, 0),
+                sprintf('la tuile %s disparait dans la prairie', $tile)
+            );
+        }
+    }
+
+    /**
+     * Sixteen colours are few, so what matters is that the things a cat has to
+     * tell apart stay apart: the meal, the poison, the sting and the pit.
+     */
+    public function testTheSixteenColoursStillTellTheDangersApart(): void
+    {
+        $palette = new TilePalette(trueColor: false);
+
+        $seen = array_map(
+            static fn (string $tile): string => $palette->pixel($tile, 0, 0)->name,
+            [
+                MapBuilder::HERBE, MapBuilder::ARBRE, MapBuilder::EAU,
+                MapBuilder::FLEUR, MapBuilder::DIGITALE, MapBuilder::RONCE, MapBuilder::TROU,
+            ]
+        );
+
+        self::assertSame($seen, array_unique($seen), 'deux choses distinctes ont la meme couleur');
+    }
+
     public function testTheFallbackDoesNotPretendToHaveShades(): void
     {
         $palette = new TilePalette(trueColor: false);
@@ -211,12 +254,284 @@ final class TilePaletteTest extends TestCase
         );
     }
 
-    public function testDetectionFollowsColorterm(): void
+    /**
+     * The whole point of the swell: the lake is different a moment later, and
+     * the meadow beside it is not. Ground that moved would make the map
+     * shimmer, which is the failure the hashed grain was written to avoid.
+     */
+    public function testTheWaterMovesAndTheGroundDoesNot(): void
     {
-        putenv('COLORTERM=truecolor');
-        self::assertInstanceOf(RgbColor::class, TilePalette::detect()->style(MapBuilder::HERBE, 0, 0)->bg);
+        $palette = new TilePalette(trueColor: true);
+        $before = $this->strip($palette, MapBuilder::EAU);
+        $grass = $this->strip($palette, MapBuilder::HERBE);
 
-        putenv('COLORTERM');
-        self::assertInstanceOf(AnsiColor::class, TilePalette::detect()->style(MapBuilder::HERBE, 0, 0)->bg);
+        $palette->animate(0.5);
+
+        $moved = count(array_diff_assoc($this->strip($palette, MapBuilder::EAU), $before));
+
+        self::assertGreaterThan(20, $moved, 'le lac est fige');
+        self::assertSame($grass, $this->strip($palette, MapBuilder::HERBE), 'la prairie scintille');
+    }
+
+    /**
+     * A swell, not a shimmer. Neighbouring tiles belong to the same wave, so
+     * they are all but the same colour; drawn per tile at random the lake
+     * would be static noise, which is what this measures the distance from.
+     */
+    public function testTheSwellIsAWaveAndNotNoise(): void
+    {
+        $palette = new TilePalette(trueColor: true);
+        $palette->animate(1.3);
+
+        for ($y = 0; $y < 12; $y++) {
+            for ($x = 0; $x < 24; $x++) {
+                $here = $palette->pixel(MapBuilder::EAU, $x, $y);
+                $right = $palette->pixel(MapBuilder::EAU, $x + 1, $y);
+
+                self::assertInstanceOf(RgbColor::class, $here);
+                self::assertInstanceOf(RgbColor::class, $right);
+
+                self::assertLessThan(
+                    12,
+                    abs($here->b - $right->b),
+                    sprintf('saut brutal en %d;%d', $x, $y)
+                );
+            }
+        }
+    }
+
+    /**
+     * Two waves rather than one, which is what keeps the lake from reading as
+     * a ruler sliding across it: a single band repeats over its own
+     * wavelength, and a shifted copy of the water would match the original
+     * almost everywhere.
+     *
+     * The threshold is loose on purpose, and it has to be. The swell only has
+     * six levels, so two unrelated tiles already agree one time in six, and a
+     * plateau makes neighbours agree far more often than that — measured, the
+     * worst shift matches 30% of the map. What a repeating pattern looks like
+     * is not "more than chance", it is "nearly all of them".
+     */
+    public function testTheSwellNeverQuiteRepeats(): void
+    {
+        $palette = new TilePalette(trueColor: true);
+        $palette->animate(2.0);
+
+        for ($shift = 1; $shift <= 16; $shift++) {
+            $same = 0;
+
+            for ($y = 0; $y < 16; $y++) {
+                for ($x = 0; $x < 16; $x++) {
+                    $here = $palette->pixel(MapBuilder::EAU, $x, $y)->toHex();
+                    $there = $palette->pixel(MapBuilder::EAU, $x + $shift, $y + $shift)->toHex();
+
+                    if ($here === $there) {
+                        $same++;
+                    }
+                }
+            }
+
+            self::assertLessThan(128, $same, sprintf('la houle se repete tous les %d', $shift));
+        }
+    }
+
+    /**
+     * Whatever the wave does, the lake stays a lake: the interpolation must
+     * not wander outside the two blues it runs between.
+     */
+    public function testTheWaterStaysBlue(): void
+    {
+        $palette = new TilePalette(trueColor: true);
+
+        foreach ([0.0, 0.7, 1.9, 3.3, 12.5] as $phase) {
+            $palette->animate($phase);
+
+            for ($x = 0; $x < 30; $x++) {
+                $colour = $palette->pixel(MapBuilder::EAU, $x, $x % 7);
+
+                self::assertInstanceOf(RgbColor::class, $colour);
+                self::assertGreaterThan($colour->r, $colour->b, sprintf('en %d, ce n est plus de l eau', $x));
+                self::assertGreaterThan($colour->g, $colour->b);
+            }
+        }
+    }
+
+    /**
+     * Sixteen colours have one blue, and a swell has nothing to move through.
+     * Still water is the honest answer there, not a lake that blinks between
+     * two of the terminal's colours.
+     */
+    public function testSixteenColoursKeepTheirWaterStill(): void
+    {
+        $palette = new TilePalette(trueColor: false);
+        $before = $palette->pixel(MapBuilder::EAU, 3, 4);
+
+        $palette->animate(1.7);
+
+        self::assertEquals($before, $palette->pixel(MapBuilder::EAU, 3, 4));
+    }
+
+    /**
+     * The swell is quantised, and this is a bandwidth budget rather than a
+     * matter of taste.
+     *
+     * php-tui sends the terminal only the cells that changed since the last
+     * frame. A continuous colour guarantees every water cell changed on every
+     * frame — measured at 35 070 bytes a frame, half a megabyte a second — and
+     * a write to the tty blocks, so a terminal that cannot swallow that stalls
+     * the simulation behind it. Six levels bring it to 4 980 bytes.
+     *
+     * The count is what the escape volume follows from, so the count is what
+     * is asserted.
+     */
+    public function testTheSwellTakesStepsAndNotAGradient(): void
+    {
+        $palette = new TilePalette(trueColor: true);
+        $palette->animate(1.7);
+
+        $levels = [];
+
+        for ($y = 0; $y < 40; $y++) {
+            for ($x = 0; $x < 40; $x++) {
+                $levels[$palette->pixel(MapBuilder::EAU, $x, $y)->toHex()] = true;
+            }
+        }
+
+        self::assertLessThanOrEqual(6, count($levels), 'le lac a repris un degrade continu');
+        self::assertGreaterThan(3, count($levels), 'il ne reste plus de houle du tout');
+    }
+
+    /**
+     * The same budget, measured the way the terminal feels it: how much of the
+     * lake has to be repainted from one frame to the next. Continuous it was
+     * 93%; this is what that number must never go back to.
+     */
+    public function testMostOfTheLakeIsUnchangedFromOneFrameToTheNext(): void
+    {
+        $palette = new TilePalette(trueColor: true);
+        $frame = 1 / 15;
+        $changed = 0;
+        $total = 0;
+
+        for ($step = 0; $step < 6; $step++) {
+            $palette->animate($step * $frame);
+            $before = [];
+
+            for ($y = 0; $y < 30; $y++) {
+                for ($x = 0; $x < 30; $x++) {
+                    $before[$x . ';' . $y] = $palette->pixel(MapBuilder::EAU, $x, $y)->toHex();
+                }
+            }
+
+            $palette->animate(($step + 1) * $frame);
+
+            foreach ($before as $key => $hex) {
+                [$x, $y] = array_map('intval', explode(';', $key));
+                ++$total;
+
+                if ($hex !== $palette->pixel(MapBuilder::EAU, $x, $y)->toHex()) {
+                    ++$changed;
+                }
+            }
+        }
+
+        self::assertLessThan(0.25, $changed / $total, 'le terminal repeint tout le lac a chaque frame');
+    }
+
+    /**
+     * A row of tiles read as hex, which is what a change in the water can be
+     * measured on.
+     *
+     * @return array<int, string>
+     */
+    private function strip(TilePalette $palette, string $tile): array
+    {
+        $colours = [];
+
+        for ($x = 0; $x < 40; $x++) {
+            $colours[$x] = $palette->pixel($tile, $x, $x % 5)->toHex();
+        }
+
+        return $colours;
+    }
+
+    /**
+     * Colour depth is the resolution of a map drawn in colour alone, so it is
+     * worth asking properly rather than settling for the sixteen every
+     * terminal is certain to have.
+     */
+    public function testDepthIsReadFromTheTerminalAndNotAssumed(): void
+    {
+        $this->withEnvironment(['COLORTERM' => 'truecolor', 'TERM_PROGRAM' => false, 'TERM' => 'xterm-256color'], function (): void {
+            self::assertSame(16777216, TilePalette::depth());
+        });
+
+        $this->withEnvironment(['COLORTERM' => false, 'TERM_PROGRAM' => false, 'TERM' => 'xterm-256color'], function (): void {
+            // No 256 rung on purpose: quantised into the xterm cube, three
+            // of the four meadow greens land on #5f5f5f — a grey — and the
+            // wood collapses onto one entry. Flat sixteen colours keep the
+            // meaning; the cube changes it.
+            self::assertSame(16, TilePalette::depth());
+        });
+
+        $this->withEnvironment(['COLORTERM' => false, 'TERM_PROGRAM' => false, 'TERM' => 'dumb'], function (): void {
+            self::assertSame(16, TilePalette::depth());
+        });
+    }
+
+    /**
+     * COLORTERM is inherited, so it speaks for the terminal that started the
+     * shell rather than the one drawing the frame — exported from a profile,
+     * or carried across an ssh or a tmux, it describes something else.
+     *
+     * There used to be a table of terminals to disbelieve here, holding
+     * Terminal.app on the grounds that it has no 24 bit colour. Measured on a
+     * real one, it has. Guessing at the far end of the pipe is exactly what
+     * --colours exists to stop, so nothing guesses any more.
+     */
+    public function testNoTerminalIsSecondGuessedByItsName(): void
+    {
+        foreach (['Apple_Terminal', 'Tabby', 'iTerm.app', ''] as $program) {
+            $this->withEnvironment(['COLORTERM' => 'truecolor', 'TERM_PROGRAM' => '' === $program ? false : $program], function () use ($program): void {
+                self::assertSame(16777216, TilePalette::depth(), sprintf('%s a ete juge sur son nom', $program));
+            });
+        }
+    }
+
+    /**
+     * There are two answers and not three. Everything above sixteen is drawn
+     * in full colour; everything else takes the flat sixteen, which keeps a
+     * meadow green where the 256 colour cube turns it grey.
+     */
+    public function testThereAreOnlyTwoWaysToPaintTheMap(): void
+    {
+        $this->withEnvironment(['COLORTERM' => 'truecolor', 'TERM_PROGRAM' => false, 'TERM' => 'xterm-256color'], function (): void {
+            self::assertInstanceOf(RgbColor::class, TilePalette::detect()->style(MapBuilder::HERBE, 0, 0)->bg);
+        });
+
+        $this->withEnvironment(['COLORTERM' => false, 'TERM_PROGRAM' => false, 'TERM' => 'xterm-256color'], function (): void {
+            self::assertInstanceOf(AnsiColor::class, TilePalette::detect()->style(MapBuilder::HERBE, 0, 0)->bg);
+        });
+    }
+
+    /**
+     * @param array<string, string|false> $environment
+     */
+    private function withEnvironment(array $environment, callable $test): void
+    {
+        $before = [];
+
+        foreach ($environment as $name => $value) {
+            $before[$name] = getenv($name);
+            putenv(false === $value ? $name : $name . '=' . $value);
+        }
+
+        try {
+            $test();
+        } finally {
+            foreach ($before as $name => $value) {
+                putenv(false === $value ? $name : $name . '=' . $value);
+            }
+        }
     }
 }

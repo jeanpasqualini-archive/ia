@@ -34,11 +34,27 @@ final class RecordingBackend implements Backend
         return Area::fromScalars(0, 0, $this->width, $this->height);
     }
 
+    /** Cells touched by the last draw, which is what reaches the terminal. */
+    private int $lastUpdates = 0;
+
     public function draw(BufferUpdates $updates): void
     {
+        $this->lastUpdates = 0;
+
         foreach ($updates as $update) {
             $this->cells[$update->position->y][$update->position->x] = $update->cell;
+            ++$this->lastUpdates;
         }
+    }
+
+    /**
+     * How many cells the last frame actually sent. A frame is a diff, so this
+     * is the number the terminal feels — and the number a forced repaint has
+     * to blow back up.
+     */
+    public function lastUpdates(): int
+    {
+        return $this->lastUpdates;
     }
 
     public function cellAt(int $column, int $row): ?Cell

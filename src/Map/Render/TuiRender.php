@@ -52,7 +52,7 @@ use Runtime\TimeControl;
  * which is what keeps the UI a fixed dashboard instead of output scrolling
  * after the shell prompt.
  */
-class TuiRender implements MapRenderInterface
+class TuiRender implements GameRenderInterface
 {
     private const SIDEBAR_WIDTH = 34;
     private const LOG_HEIGHT = 8;
@@ -65,6 +65,8 @@ class TuiRender implements MapRenderInterface
 
     private BufferLogger $bufferLog;
 
+    private CatSprite $cat;
+
     /** Index of the AI tab currently shown in the sidebar. */
     private int $activeTab = 0;
 
@@ -74,6 +76,24 @@ class TuiRender implements MapRenderInterface
      * second time is how a button ends up one row away from where it is drawn.
      */
     private ?int $focusRow = null;
+
+    /** Instant of the first frame, the origin the swell is counted from. */
+    private ?float $startedAt = null;
+
+    /** Seconds since that first frame, held for the length of one frame. */
+    private float $phase = 0.0;
+
+    /**
+     * The floating cats, keyed [row][column] in tiles of the view, rebuilt at
+     * the top of every frame.
+     *
+     * Kept here rather than threaded through the drawing because the chain
+     * that paints a tile already carries ten arguments; one more would be the
+     * one that makes it unreadable.
+     *
+     * @var array<int, array<int, Color>>
+     */
+    private array $markers = [];
 
     public function __construct(
         private Terminal $terminal,
@@ -87,8 +107,18 @@ class TuiRender implements MapRenderInterface
         private ?SoundBoard $audio = null,
         private Camera $camera = new Camera(),
         private bool $mouse = true,
+        /**
+         * Where the animated water reads the time. Injected so a frame test
+         * can ask for a given instant instead of asserting on whatever the
+         * wall clock said while it ran.
+         *
+         * @var (\Closure(): float)|null
+         */
+        private ?\Closure $clock = null,
     ) {
         $this->palette ??= TilePalette::detect();
+        $this->clock ??= static fn (): float => microtime(true);
+        $this->cat = new CatSprite();
         $this->bufferLog = new BufferLogger();
         $this->logger->addLogger($this->bufferLog);
     }
@@ -136,6 +166,21 @@ class TuiRender implements MapRenderInterface
         $this->terminal->execute(Actions::alternateScreenDisable());
         $this->terminal->execute(Actions::cursorShow());
         $this->terminal->execute(Actions::clear(ClearType::All));
+    }
+
+    /**
+     * Drop the record of what is on screen, so the next frame paints every
+     * cell instead of only the ones that changed.
+     *
+     * `Display::clear()` empties the back buffer, which is what the diff is
+     * taken against: everything then reads as changed. It costs one full frame
+     * — about 120 KB — and it is the only way to undo damage the renderer
+     * cannot see, because a corrupted cell holds exactly the content the
+     * renderer believes it drew there.
+     */
+    public function repaint(): void
+    {
+        $this->display?->clear();
     }
 
     public function nextTab(): void
@@ -253,6 +298,16 @@ class TuiRender implements MapRenderInterface
     public function render($map): void
     {
         $this->init();
+
+        // Read once, at the top of the frame: the water is animated from it,
+        // and a clock read per tile would draw the bottom of the lake later
+        // than its top. Measured from the first frame rather than from the
+        // epoch, so the number stays small enough for a sine to keep its
+        // precision.
+        $now = ($this->clock)();
+        $this->startedAt ??= $now;
+        $this->phase = $now - $this->startedAt;
+        $this->palette->animate($this->phase);
 
         $this->display->draw($this->layout($map));
     }
@@ -691,6 +746,7 @@ class TuiRender implements MapRenderInterface
         $originY = $this->camera->y();
         $players = $this->visiblePlayers($originX, $originY, $scale, $view);
         $sightEdge = $this->sightEdge($scale);
+        $this->markers = $this->floatingCats($originX, $originY, $scale, $view);
 
         $lines = [];
 
@@ -774,6 +830,13 @@ class TuiRender implements MapRenderInterface
         int $width,
         int $height,
     ): Color {
+        // The marker comes first: it hangs in front of the world rather than
+        // standing in it, and a cat one cannot find is the thing it is there
+        // to fix.
+        if (isset($this->markers[$row][$column])) {
+            return $this->markers[$row][$column];
+        }
+
         if (isset($sightEdge[$worldY * $width + $worldX])) {
             return $this->palette->sightEdgeColour();
         }
@@ -874,6 +937,65 @@ class TuiRender implements MapRenderInterface
 
             if ($column < $view['x'] && $row < $view['y']) {
                 $placed[$row][$column] = (string) ($index + 1);
+            }
+        }
+
+        return $placed;
+    }
+
+    /**
+     * A floating cat over every player in view.
+     *
+     * Placed in tiles of the *view*, like the players themselves, so the
+     * sprite keeps its size on screen whatever the zoom — it is a marker, and
+     * a marker that shrank with the ground would stop being one exactly when
+     * it is needed.
+     *
+     * Clipped rather than moved when it runs off an edge: a cat near the top
+     * of the view loses the top of its cloud, which is the honest thing to
+     * show. Flipping the sprite under the cat instead would make it jump the
+     * moment the view was panned by one tile.
+     *
+     * @param array{x: int, y: int} $view
+     *
+     * @return array<int, array<int, Color>> keyed [row][column]
+     */
+    private function floatingCats(int $originX, int $originY, int $scale, array $view): array
+    {
+        $placed = [];
+        $level = $this->selectedPlayer()?->getNiveau();
+
+        foreach (array_values($this->players()) as $index => $player) {
+            if (null !== $level && $player->getNiveau() !== $level) {
+                continue;
+            }
+
+            $x = $player->getPosition()->getX();
+            $y = $player->getPosition()->getY();
+
+            if ($x < $originX || $y < $originY) {
+                continue;
+            }
+
+            $column = intdiv($x - $originX, $scale);
+            $row = intdiv($y - $originY, $scale);
+
+            if ($column >= $view['x'] || $row >= $view['y']) {
+                continue;
+            }
+
+            foreach ($this->cat->over($this->palette, $index, $this->phase) as $dy => $line) {
+                foreach ($line as $dx => $colour) {
+                    $spriteRow = $row + $dy;
+                    $spriteColumn = $column + $dx;
+
+                    if ($spriteRow < 0 || $spriteColumn < 0
+                        || $spriteRow >= $view['y'] || $spriteColumn >= $view['x']) {
+                        continue;
+                    }
+
+                    $placed[$spriteRow][$spriteColumn] = $colour;
+                }
             }
         }
 
