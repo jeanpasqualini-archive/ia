@@ -6,6 +6,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A PHP toy AI simulation: a cat (`Chat`) wanders a tile map, gets hungry, walks to the nearest flower and eats it. It renders as a full-screen terminal dashboard — map, live stats, log pane, time-machine gauge, help. The domain vocabulary is French (`Chat`, `Estomac` = stomach, `Nouriture` = food, `Objectif` = goal); keep new code and comments in English unless extending an existing French-named concept.
 
+## What it is actually for
+
+Two things at once, and most decisions here only make sense against them.
+
+**A sandbox where behaviour comes out of incomplete perception.** Until cats were given a limited field of view they knew where every flower on the map was, which makes an optimiser rather than an agent: there is nothing to watch, only a shortest path unrolling. Perception is now local, so a cat explores because it does not know, misses food another one will find, and walks round a lake whose far side it cannot see. Everything recently added serves that — a world eight screens wide so trajectories can diverge, cats spawned far apart so they live separate lives, and biomes next, which is what will give them reasons to be *different* rather than merely elsewhere.
+
+**A proving ground for PHP.** The owner's position is that the ceiling is the developer and not the language, so the work deliberately goes at what PHP is said not to do: synthesizing audio and pushing it through SDL2 over FFI, twenty thousand ticks a second over forty thousand tiles, a windowed renderer with sampling. When something here looks disproportionate for a toy, that is usually why. Say plainly when a wall is a real runtime limit — there is no audio output, and FFI callbacks cannot be invoked from a foreign thread — rather than repeating the reputation.
+
+The corollary is that **observability is a feature, not scaffolding**. The time machine, the per-AI panel, the memory gauges, the speed that reports the rate actually reached rather than the one requested, the field of view drawn on the map, the sound: they exist to watch agents and understand why they did what they did. Weigh a change against that before against convenience.
+
+## Where the AI is going
+
+The behaviour is deliberately hand-written and deterministic **first**. The current cat is the yardstick: without it, a learned policy is just a behaviour, with it the question becomes "does it beat the version written by hand", which is answerable. Do not replace the deterministic goals with a learner before there is something to grade.
+
+Most of what a learning agent needs already exists, built for other reasons: `--seed` gives a reproducible environment, the snapshot ring lets a state be replayed and a different action tried from the same point, x1000 gives the throughput an evaluation needs, `Player::getVision()` and `PathFinder::costsWithin()` *are* the observation space, and `Estomac` is already a reward signal.
+
+Two things to settle before writing any of it:
+
+- **A policy should choose among `Objectif`s, not among steps.** The action space stays tiny, and — more importantly here — the AI panel keeps showing `describe()`, so one can still see *why* the cat did something. Picking tile-by-tile moves buys expressiveness and spends exactly what makes this project worth watching.
+- **A policy has state, and `World` is serialized.** Weights and any generator must go into the snapshot or the time machine will lie: replaying a past state with a future brain. Three lines of `__sleep` now, a haunting later.
+
+A cat is tractable because it has **one** drive, which is also why a learner would currently have nothing to learn — the `match` in `CatIA` is already optimal. The interesting boundary is the *second* drive (sleep, warmth, fear, curiosity): the moment two needs compete for the same tick, hand-written rules become a pile of `if`s nobody can tune, and arbitration is what a policy is actually good at.
+
 ## Running
 
 ```bash
@@ -151,7 +174,7 @@ Generation is seeded through `Random\Randomizer` (no global `mt_srand`), so `--s
 
 Terrain drives movement: see Pathfinding below.
 
-**Time machine = serialization.** `Snapshot\Instant` serializes a `World`; `FlashMemory` keeps a ring of 10 with a read cursor. Restoring swaps the live world and re-injects logger and input controller (`GameRunner::setWorld`).
+**Time machine = serialization.** `Snapshot\Instant` serializes a `World`; `FlashMemory` keeps a ring of 10 with a read cursor. Restoring swaps the live world and re-attaches the logger (`GameRunner::setWorld`), which also rebases the flower count the eating sound is detected from.
 
 Serialization is the sharp edge of this codebase. Anything added to `World` or a player must be serializable or excluded via `__sleep`. In particular, the `Estomac` event dispatcher holds closures bound to `CatIA`: it is dropped on sleep, `CatIA::__wakeup` re-subscribes, and `Estomac::getEventDispatcher()` builds it lazily because wake-up order between the two is not guaranteed. `tests/Snapshot/TimeMachineTest.php` covers exactly this.
 
