@@ -201,6 +201,9 @@ class TilePalette
     /** @var array<string, Style> */
     private array $cache = [];
 
+    /** @var array<string, int> tile and shade to a packed colour */
+    private array $packedCache = [];
+
     /**
      * Where the swell stands, in seconds.
      *
@@ -548,6 +551,30 @@ class TilePalette
             + sin($x * 0.31 - $y * 0.57 + $time * 0.62);
 
         return max(0.0, min(1.0, ($height + 2.0) / 4.0));
+    }
+
+    /**
+     * A tile as a packed ARGB integer, for a renderer that draws pixels.
+     *
+     * **`pixel()` builds an `RgbColor` out of a hex *string* every time it is
+     * asked**, which is right for the terminal — php-tui wants that object —
+     * and ruinous for a window, where the same question is asked ten thousand
+     * times a frame. Measured, it was most of what the map view spent. The
+     * answer only depends on the tile and which of its four shades the
+     * coordinates hash to, so there are a few dozen of them in all.
+     *
+     * Water is the exception and is never cached: it is the one thing on this
+     * map that moves, so its answer depends on the clock.
+     */
+    public function packed(string $tile, int $x, int $y): int
+    {
+        if (!$this->trueColor || MapBuilder::EAU === $tile) {
+            return Pixels::pack($this->pixel($tile, $x, $y));
+        }
+
+        $key = $tile . $this->variant($x, $y);
+
+        return $this->packedCache[$key] ??= Pixels::pack($this->pixel($tile, $x, $y));
     }
 
     public function sightEdgeColour(): Color

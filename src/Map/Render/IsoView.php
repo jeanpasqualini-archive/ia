@@ -225,10 +225,7 @@ final class IsoView
                     if (null !== $tuft) {
                         $this->stamp($pixels, $tuft, $screenX, $top, [
                             'o' => self::OUTLINE,
-                            'g' => self::shade(
-                                Pixels::pack($this->palette->pixel($tile, $worldX, $worldY)),
-                                1.45
-                            ),
+                            'g' => self::shade($this->palette->packed($tile, $worldX, $worldY), 1.45),
                         ]);
                     }
                 }
@@ -258,7 +255,7 @@ final class IsoView
         int $worldY,
         int $lift = 0,
     ): void {
-        $colour = Pixels::pack($this->palette->pixel($tile, $worldX, $worldY));
+        $colour = $this->palette->packed($tile, $worldX, $worldY);
         $lit = self::shade($colour, 1.12);
         $dark = self::shade($colour, 0.78);
 
@@ -390,7 +387,7 @@ final class IsoView
      */
     private function roles(string $tile, int $worldX, int $worldY): array
     {
-        $own = Pixels::pack($this->palette->pixel($tile, $worldX, $worldY));
+        $own = $this->palette->packed($tile, $worldX, $worldY);
 
         return [
             'o' => self::OUTLINE,

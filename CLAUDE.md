@@ -154,6 +154,35 @@ Grass has an asset of its own — three tufts, on two tiles in five, chosen by t
 
 Two geometry mistakes the tests found and reading would not have. The lattice fans out from a point, so drawn from the top of the view it left both upper corners bare, and it has to start *above* the view and be clipped. Correcting only that left the two lower corners bare for the mirror reason: a lattice sized by depth alone narrows towards the bottom exactly as it does towards the top. `IsoView::coverage()` therefore solves for the far corner — a screen position comes from the sum *and* the difference of the axes — rather than counting rows.
 
+### Where a frame actually goes
+
+Asked whether something should be moved to a thread, and the answer was no on
+two counts. PHP has no usable threads here — `ext-parallel` needs a thread safe
+build, and this repository spent its early history escaping an extension that
+pinned it to a dead PHP. And there was nothing to move: **a tick of the world
+costs 0.10 ms and the renderer costs a hundred and sixty times that.** The
+simulation is not on the critical path; it is a rounding error on it.
+
+What the measurement did find, in order of size:
+
+- **The overview was 14.3 ms of a 16 ms frame.** Ten thousand tiles asked of
+  the palette, fifteen times a second, to show a world that changes when a cat
+  eats a flower. Its ground is kept and rebuilt on a timer.
+- **The panels were most of the rest.** A sidebar of 400x640 and a strip of
+  1424x192, filled, written and packed every frame to say the same thing. They
+  are now composed only when what they say changes, and an unchanged one is
+  not even packed — identity is the test, since the cache hands back the same
+  object. Measured, 36 frames out of 39 reuse it.
+
+That is the same rule php-tui applies to the terminal and the window was not:
+a frame is not the whole picture, it is the part that changed. It is worth
+saying because the window *looks* like it has no such constraint — nothing is
+being sent anywhere — and the cost simply moved from the wire to the CPU.
+
+Worst case now is the wide isometric view at about 16 ms against a budget of
+66. There is no reason to go further, and every reason to measure before
+believing where the time is: the first three guesses here were all wrong.
+
 **An overview of the whole world sits at the bottom of the panel**, sampled every other tile — 128x80 for a 256x160 world — with the view drawn on it as an outline and the cats as three pixel dots. It is in the *panel* and not over the map because the panel is at true pixel size while the isometric view is composed at half and blown up: an overview drawn there would come out as soft as the ground it exists to help you leave. Clicking it puts the view there, and `GameRenderInterface::jumpTo()` is asked before the map, since a click inside the panel is not a click on the world and the two must not both answer. The terminal declines: its map view already shows the whole world at 1:8, so *where am I* is answerable from the picture itself.
 
 **The isometric view is always 1:1, and `z` is refused there rather than ignored.** Its coverage is a diamond of some seventy cells a side, so at 1:4 it asks the world for nearly three hundred rows where there are a hundred and sixty: everything past the edge is skipped and the picture closes into a wedge with sky around it — measured, 41% of the screen at 1:4 and 92% at 1:8. Sampling would say nothing there in any case, a tree standing for eight tiles being no kind of answer, and the two views already divide the work: the map is the world at a glance, this is the close look. `GameRenderInterface::zoomable()` is how the loop asks instead of assuming, and entering the view remembers the zoom it gave up so leaving puts it back.
