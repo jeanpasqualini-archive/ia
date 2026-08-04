@@ -81,6 +81,9 @@ class TilePalette
      */
     private const POISON = '#8fd0e8';
 
+    /** What grows in the dark, pale for want of light. */
+    private const MUSHROOM = '#e8d9b0';
+
     /**
      * The far edge of what a cat can see.
      *
@@ -240,7 +243,7 @@ class TilePalette
                 ->fg(RgbColor::fromHex('#1a1512')),
             MapBuilder::CHAMPIGNON => Style::default()
                 ->bg($this->shade(MapBuilder::GALERIE, $variant))
-                ->fg(RgbColor::fromHex('#e8d9b0')),
+                ->fg(RgbColor::fromHex(self::MUSHROOM)),
             MapBuilder::DIGITALE => Style::default()
                 ->bg($this->shade(MapBuilder::HERBE, $variant))
                 ->fg(RgbColor::fromHex(self::POISON)),
@@ -296,6 +299,45 @@ class TilePalette
                     default => AnsiColor::LightMagenta,
                 }),
         };
+    }
+
+    /**
+     * A tile as a single colour, for the high resolution view.
+     *
+     * There, a tile is half a cell: two of them share one character, drawn as
+     * an upper half block with the top tile as foreground and the bottom one
+     * as background. No glyph can survive that — a character occupies the
+     * whole cell — so what stands on the ground has to speak through its
+     * colour instead. Everything already had one, since the flowers, the
+     * thorns and the cats were coloured before they were shaped.
+     */
+    public function pixel(string $tile, int $x, int $y): Color
+    {
+        $variant = $this->variant($x, $y);
+        $index = self::playerIndex($tile);
+
+        if (null !== $index) {
+            return RgbColor::fromHex(self::PLAYERS[$index % count(self::PLAYERS)]['color']);
+        }
+
+        return match ($tile) {
+            MapBuilder::FLEUR => RgbColor::fromHex(self::BLOOMS[$variant]),
+            MapBuilder::DIGITALE => RgbColor::fromHex(self::POISON),
+            MapBuilder::RONCE => RgbColor::fromHex(self::THORN),
+            MapBuilder::CHAMPIGNON => RgbColor::fromHex(self::MUSHROOM),
+            default => $this->shade($tile, $variant),
+        };
+    }
+
+    /** Whether the high resolution view can be drawn at all. */
+    public function hasTrueColor(): bool
+    {
+        return $this->trueColor;
+    }
+
+    public function sightEdgeColour(): Color
+    {
+        return RgbColor::fromHex(self::SIGHT_EDGE);
     }
 
     private function shade(string $tile, int $variant): Color

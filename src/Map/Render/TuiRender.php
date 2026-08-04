@@ -23,6 +23,7 @@ use PhpTui\Term\Terminal;
 use PhpTui\Term\TerminalInformation\Size;
 use PhpTui\Tui\Bridge\PhpTerm\PhpTermBackend;
 use PhpTui\Tui\Color\AnsiColor;
+use PhpTui\Tui\Color\Color;
 use PhpTui\Tui\Display\Backend;
 use PhpTui\Tui\Display\Display;
 use PhpTui\Tui\DisplayBuilder;
@@ -66,6 +67,12 @@ class TuiRender implements MapRenderInterface
 
     /** Index of the AI tab currently shown in the sidebar. */
     private int $activeTab = 0;
+
+    /**
+     * Half block rendering: a tile becomes half a cell instead of two columns,
+     * which puts four times as many of them on screen.
+     */
+    private bool $fine = false;
 
     /**
      * Screen row of the "centre the view" button, recorded while the panel is
@@ -146,6 +153,33 @@ class TuiRender implements MapRenderInterface
         }
     }
 
+    /**
+     * Twice the tiles across and twice down, drawn as upper half blocks: the
+     * top tile is the foreground colour and the bottom one the background.
+     *
+     * It is the same ground the 1:2 zoom covers, except that zoom *samples* —
+     * it throws away three tiles in four — and this draws all of them. What
+     * it costs is the glyphs: a character fills a whole cell, so at half a
+     * cell per tile a flower has only its colour left to speak with.
+     *
+     * Refused without true colour, where the shades it needs do not exist.
+     */
+    public function toggleFine(): bool
+    {
+        if (!$this->palette->hasTrueColor()) {
+            return false;
+        }
+
+        $this->fine = !$this->fine;
+
+        return true;
+    }
+
+    public function isFine(): bool
+    {
+        return $this->fine;
+    }
+
     public function selectTab(int $index): void
     {
         if ($index >= 0 && $index < count($this->players())) {
@@ -171,11 +205,18 @@ class TuiRender implements MapRenderInterface
         $cols = $size instanceof Size ? $size->cols : 80;
         $lines = $size instanceof Size ? $size->lines : 24;
 
-        // A tile spans two columns, so a row holds half as many of them.
-        return [
-            'x' => max(10, intdiv($cols - self::SIDEBAR_WIDTH - 2, TilePalette::TILE_WIDTH)),
-            'y' => max(10, $lines - self::LOG_HEIGHT - self::CONTROL_HEIGHT - 2),
-        ];
+        $width = $cols - self::SIDEBAR_WIDTH - 2;
+        $height = $lines - self::LOG_HEIGHT - self::CONTROL_HEIGHT - 2;
+
+        // A tile spans two columns, so a row holds half as many of them —
+        // unless it is half a cell, in which case a row holds twice as many
+        // and there are two rows of tiles per row of cells.
+        return $this->fine
+            ? ['x' => max(10, $width), 'y' => max(10, $height * 2)]
+            : [
+                'x' => max(10, intdiv($width, TilePalette::TILE_WIDTH)),
+                'y' => max(10, $height),
+            ];
     }
 
     /**
@@ -190,8 +231,8 @@ class TuiRender implements MapRenderInterface
 
         return $column >= 1
             && $row >= 1
-            && $column <= $view['x'] * TilePalette::TILE_WIDTH
-            && $row <= $view['y'];
+            && $column <= ($this->fine ? $view['x'] : $view['x'] * TilePalette::TILE_WIDTH)
+            && $row <= ($this->fine ? intdiv($view['y'], 2) : $view['y']);
     }
 
     /**
@@ -204,7 +245,9 @@ class TuiRender implements MapRenderInterface
      */
     public function toCells(int $columns, int $rows): array
     {
-        return [intdiv($columns, TilePalette::TILE_WIDTH), $rows];
+        return $this->fine
+            ? [$columns, $rows * 2]
+            : [intdiv($columns, TilePalette::TILE_WIDTH), $rows];
     }
 
     /**
@@ -695,7 +738,10 @@ class TuiRender implements MapRenderInterface
 
         $lines = [];
 
-        for ($row = 0; $row < $view['y']; $row++) {
+        // Two rows of tiles per row of cells in the fine view, one otherwise.
+        $step = $this->fine ? 2 : 1;
+
+        for ($row = 0; $row < $view['y']; $row += $step) {
             $worldY = $originY + $row * $scale;
 
             if ($worldY >= $height) {
@@ -711,19 +757,81 @@ class TuiRender implements MapRenderInterface
                     break;
                 }
 
-                $tile = $players[$row][$column] ?? $map[$worldY][$worldX] ?? MapBuilder::HERBE;
-                $spans[] = $this->palette->cell(
-                    $tile,
-                    $worldX,
-                    $worldY,
-                    isset($sightEdge[$worldY * $width + $worldX])
-                );
+                $spans[] = $this->fine
+                    ? $this->halfBlock($map, $players, $sightEdge, $row, $column, $originX, $originY, $scale, $width, $height)
+                    : $this->palette->cell(
+                        $players[$row][$column] ?? $map[$worldY][$worldX] ?? MapBuilder::HERBE,
+                        $worldX,
+                        $worldY,
+                        isset($sightEdge[$worldY * $width + $worldX])
+                    );
             }
 
             $lines[] = Line::fromSpans(...$spans);
         }
 
         return ParagraphWidget::fromText(Text::fromLines(...$lines));
+    }
+
+    /**
+     * One cell carrying two tiles: an upper half block whose foreground is
+     * the tile above and whose background is the tile below.
+     *
+     * The lower one may fall off the bottom of the world, in which case the
+     * cell is drawn as the upper tile alone rather than against whatever
+     * happened to be in memory.
+     *
+     * @param array<int, array<int, string>> $map
+     * @param array<int, array<int, string>> $players
+     * @param array<int, true> $sightEdge
+     */
+    private function halfBlock(
+        array $map,
+        array $players,
+        array $sightEdge,
+        int $row,
+        int $column,
+        int $originX,
+        int $originY,
+        int $scale,
+        int $width,
+        int $height,
+    ): Span {
+        $worldX = $originX + $column * $scale;
+        $top = $originY + $row * $scale;
+        $bottom = $originY + ($row + 1) * $scale;
+
+        $upper = $this->pixelAt($map, $players, $sightEdge, $worldX, $top, $row, $column, $width, $height);
+        $lower = $bottom >= $height
+            ? $upper
+            : $this->pixelAt($map, $players, $sightEdge, $worldX, $bottom, $row + 1, $column, $width, $height);
+
+        return Span::styled('▀', Style::default()->fg($upper)->bg($lower));
+    }
+
+    /**
+     * @param array<int, array<int, string>> $map
+     * @param array<int, array<int, string>> $players
+     * @param array<int, true> $sightEdge
+     */
+    private function pixelAt(
+        array $map,
+        array $players,
+        array $sightEdge,
+        int $worldX,
+        int $worldY,
+        int $row,
+        int $column,
+        int $width,
+        int $height,
+    ): Color {
+        if (isset($sightEdge[$worldY * $width + $worldX])) {
+            return $this->palette->sightEdgeColour();
+        }
+
+        $tile = $players[$row][$column] ?? $map[$worldY][$worldX] ?? MapBuilder::HERBE;
+
+        return $this->palette->pixel($tile, $worldX, $worldY);
     }
 
     /**
@@ -736,9 +844,10 @@ class TuiRender implements MapRenderInterface
     private function mapTitle(array $map): string
     {
         return sprintf(
-            '%s %s  %d;%d de %dx%d  (fleches, z/Z)',
+            '%s %s%s  %d;%d de %dx%d  (fleches, z/Z, f)',
             World::SOUTERRAIN === $this->selectedPlayer()?->getNiveau() ? 'Souterrain' : 'Carte',
             $this->camera->label(),
+            $this->fine ? ' fin' : '',
             $this->camera->y(),
             $this->camera->x(),
             count($map[0] ?? []),

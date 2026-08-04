@@ -6,6 +6,7 @@ namespace Tests\Map\Render;
 
 use Audio\SoundBoard;
 use Logger\MultipleLogger;
+use Map\Render\TilePalette;
 use Map\Render\TuiRender;
 use Map\World\WorldContainer;
 use Memory\MemoryManager;
@@ -224,6 +225,48 @@ final class TuiRenderTest extends TestCase
                 sprintf('la ligne %d deborde ou se retracte', $number)
             );
         }
+    }
+
+    /**
+     * Half blocks put four times as many tiles on screen — the coverage of
+     * the 1:2 zoom, except that zoom samples and this draws every tile. The
+     * rows must still come out exactly as wide as the screen: it is one
+     * character per cell either way, and that is the invariant a two column
+     * glyph breaks.
+     */
+    public function testTheFineViewHoldsFourTimesAsManyTilesAndStillFitsTheScreen(): void
+    {
+        $render = $this->render(palette: new TilePalette(trueColor: true));
+        $coarse = $render->getSize();
+
+        self::assertTrue($render->toggleFine());
+
+        $fine = $render->getSize();
+
+        self::assertSame($coarse['x'] * 2, $fine['x'], 'deux fois plus de tuiles en largeur');
+        self::assertSame($coarse['y'] * 2, $fine['y'], 'et en hauteur');
+
+        $render->render($this->emptyMap(200, 200));
+
+        foreach (explode("\n", $this->backend->toString()) as $number => $row) {
+            if ('' === $row) {
+                continue;
+            }
+
+            self::assertSame(100, mb_strwidth($row, 'UTF-8'), sprintf('la ligne %d deborde', $number));
+        }
+    }
+
+    /**
+     * Sixteen colours cannot say what the fine view needs: two different tiles
+     * in one cell means a foreground and a background that both carry ground.
+     */
+    public function testTheFineViewIsRefusedWithoutTrueColour(): void
+    {
+        $render = $this->render(palette: new TilePalette(trueColor: false));
+
+        self::assertFalse($render->toggleFine());
+        self::assertFalse($render->isFine());
     }
 
     /**
@@ -487,6 +530,7 @@ final class TuiRenderTest extends TestCase
         ?MemoryUsage $memoryUsage = null,
         ?SoundBoard $audio = null,
         ?Camera $camera = null,
+        ?TilePalette $palette = null,
     ): TuiRender {
         $terminal = Terminal::new(
             AnsiPainter::new(StringWriter::new()),
@@ -502,6 +546,7 @@ final class TuiRenderTest extends TestCase
             $timeControl ?? new TimeControl(),
             $this->backend,
             $memoryUsage ?? new MemoryUsage(),
+            palette: $palette,
             audio: $audio,
             camera: $camera ?? new Camera(),
         );
