@@ -16,6 +16,11 @@ interface PlayerInterface
 
     public function getIdentifiant(): string;
 
+    /**
+     * How far this player can see, in tiles. Bounds every search it makes.
+     */
+    public function getVision(): int;
+
     public function getIa(): IAInterface;
 
     public function update(World $world): void;

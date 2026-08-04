@@ -97,7 +97,15 @@ Asking for x1000 does not make the machine deliver it, so `observe()` records th
 
 ### Pathfinding
 
-`PathFinder` works on integers over a flat cost grid (`MapBuilder::costGrid()`), never on `Point` objects: the first version allocated about two dozen of them per expanded tile, and a search that found nothing — having to visit the whole map — took 50ms, capping the simulation at x40 as soon as food ran out. `Manger` also waits `RETRY_EVERY` ticks before searching again after a failure, since eating only ever removes flowers and the answer can hardly turn positive on its own.
+`PathFinder` works on integers over a flat cost grid (`MapBuilder::costGrid()`), never on `Point` objects: the first version allocated about two dozen of them per expanded tile, and a search that found nothing — having to visit the whole map — took 50ms, capping the simulation at x40 as soon as food ran out. **A cat only sees `Player::getVision()` tiles, and that is what lets the map be larger than the screen.** An unbounded search that finds nothing has to flood everything reachable, so its cost follows the size of the world: measured on a 256x160 map with a flower that exists but cannot be reached — the case that forces the flood to give up — it took **32ms**, which on its own caps the simulation near thirty ticks a second. Bounded, it does not register.
+
+Bounding the flood is not enough on its own: `toNearest()` collected its goals through `positionsOf()`, which swept the whole map on every search, so that sweep takes the same box. The budget is spent in **cost, not distance**, which has a side effect worth keeping — undergrowth costs three times what grass does, so a cat sees three times less far through a wood.
+
+`MapBuilder::costGrid()` is built once and kept until the terrain changes. `Manger` builds a `PathFinder` on every re-route and each one used to copy the whole grid; a cat moving writes to the *player* layer, which deliberately does not invalidate it.
+
+**Limited sight has to come with wandering.** A cat that sees no flower walks to the edge of its sight and looks again from there; without that, a bounded search reads as a cat standing still. Headings are walked clockwise rather than drawn at random — near a shore most of them lead nowhere, and the wandering has to be reproducible for the same reason the terrain is seeded. `RETRY_EVERY` dropped from 300 ticks to 30 because its justification is gone: the answer *can* now turn positive on its own, since walking changes what is visible. It only guards a cat that can neither see food nor move.
+
+A cat that has just eaten returns immediately instead of routing again: the stomach raises `full` on the player's own update, which runs *after* the AI's, so the goal would otherwise send it wandering off the flower it is standing on (`testTheCatWalksToTheFlowerEatsItAndTurnsItIntoGrass` caught exactly that).
 
 `MapBuilder::cost()` gives each tile a walking cost — grass and flowers 1, undergrowth 3, water impassable (`null`). Read it with `array_key_exists`, never `??`: an impassable tile has a *null* cost, which `??` would silently replace with the default.
 
@@ -125,7 +133,7 @@ Serialization is the sharp edge of this codebase. Anything added to `World` or a
 
 ## Tests
 
-`make test` — 112 tests covering map queries and bounds, cat behaviour end-to-end (walks, eats, turns the flower to grass), snapshot round-trips, headless frame rendering, and the audio (oscillators, mixing, loop length, the feeding of the device against a fake output). The SDL test skips itself when the library is absent, which is the normal outcome in the container. `tests/WorldFactory.php` builds worlds from ASCII rows so nothing depends on the random provider.
+`make test` — 125 tests covering map queries and bounds, cat behaviour end-to-end (walks, eats, turns the flower to grass), snapshot round-trips, headless frame rendering, and the audio (oscillators, mixing, loop length, the feeding of the device against a fake output). The SDL test skips itself when the library is absent, which is the normal outcome in the container. `tests/WorldFactory.php` builds worlds from ASCII rows so nothing depends on the random provider.
 
 `phpunit.xml.dist` fails on warnings, notices and deprecations, but `ignoreIndirectDeprecations` keeps vendor deprecations from failing the suite.
 

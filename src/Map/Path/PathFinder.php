@@ -57,33 +57,56 @@ class PathFinder
      * Route to the closest reachable tile holding $item, excluding the
      * starting tile. Null when no such tile can be reached.
      *
+     * $range bounds the search to what the searcher can see, in tiles. That
+     * is what lets the map grow without the simulation slowing down: an
+     * unbounded search that finds nothing has to flood everything reachable,
+     * so its cost follows the size of the world. Bounded, it does not.
+     *
      * @return list<Point>|null
      */
-    public function toNearest(Point $from, string $item): ?array
+    public function toNearest(Point $from, string $item, ?int $range = null): ?array
     {
         // Goals are looked up by index rather than re-read from the map on
-        // every expanded tile.
+        // every expanded tile. The sweep that collects them is bounded too:
+        // bounding only the flood would still scan the whole map here.
         $goals = [];
 
-        foreach ($this->map->positionsOf($item) as [$y, $x]) {
+        foreach ($this->map->positionsOf($item, $from, $range) as [$y, $x]) {
             $goals[$this->index($x, $y)] = true;
         }
 
         unset($goals[$this->index($from->getX(), $from->getY())]);
 
-        return $this->search($from, $goals);
+        return $this->search($from, $goals, $this->budget($range));
     }
 
     /**
      * @return list<Point>|null
      */
-    public function to(Point $from, Point $destination): ?array
+    public function to(Point $from, Point $destination, ?int $range = null): ?array
     {
         if (null === $this->costAt($destination->getX(), $destination->getY())) {
             return null;
         }
 
-        return $this->search($from, [$this->index($destination->getX(), $destination->getY()) => true]);
+        return $this->search(
+            $from,
+            [$this->index($destination->getX(), $destination->getY()) => true],
+            $this->budget($range)
+        );
+    }
+
+    /**
+     * A range in tiles becomes a ceiling on accumulated cost.
+     *
+     * Spending the budget in cost rather than in distance has a side effect
+     * worth keeping: undergrowth costs three times what grass does, so a cat
+     * sees three times less far through a wood than across a meadow. That is
+     * the behaviour one would have had to write by hand otherwise.
+     */
+    private function budget(?int $range): ?int
+    {
+        return null === $range ? null : $range * self::STRAIGHT;
     }
 
     /**
@@ -91,7 +114,7 @@ class PathFinder
      *
      * @return list<Point>|null
      */
-    private function search(Point $from, array $goals): ?array
+    private function search(Point $from, array $goals, ?int $budget = null): ?array
     {
         if ([] === $goals || 0 === $this->width) {
             return null;
@@ -134,6 +157,14 @@ class PathFinder
                 }
 
                 $total = $costSoFar + $cost * ((0 !== $dx && 0 !== $dy) ? self::DIAGONAL : self::STRAIGHT);
+
+                // Out of sight. Dropping the tile here rather than after
+                // expanding it is the whole point: the frontier stops growing
+                // and the search costs the same on any size of map.
+                if (null !== $budget && $total > $budget) {
+                    continue;
+                }
+
                 $key = $this->index($nx, $ny);
 
                 if (isset($best[$key]) && $best[$key] <= $total) {

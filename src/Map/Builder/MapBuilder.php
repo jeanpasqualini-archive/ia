@@ -44,6 +44,19 @@ class MapBuilder
     private array $finalLayer = [];
 
     /**
+     * Built once and kept until the terrain changes.
+     *
+     * Manger builds a PathFinder on every re-route and each one asked for the
+     * whole grid. On a map the size of the screen that was invisible; on a
+     * large one, copying forty thousand tiles cost more than the search it
+     * was preparing. Only the terrain layer feeds it, so a cat moving — which
+     * writes to the player layer every frame — does not throw it away.
+     *
+     * @var list<list<int|null>>|null
+     */
+    private ?array $costGrid = null;
+
+    /**
      * @param list<string> $map
      */
     public function __construct(array $map, private ?MultipleLogger $logger = null)
@@ -102,6 +115,7 @@ class MapBuilder
         $this->layers = [self::LAYER_MAP => array_map(mb_str_split(...), $data['terrain'])]
             + $data['layers'];
         $this->logger = null;
+        $this->costGrid = null;
 
         $this->updateFinalLayer();
     }
@@ -162,6 +176,14 @@ class MapBuilder
      */
     public function costGrid(): array
     {
+        return $this->costGrid ??= $this->buildCostGrid();
+    }
+
+    /**
+     * @return list<list<int|null>>
+     */
+    private function buildCostGrid(): array
+    {
         $grid = [];
 
         foreach ($this->layers[self::LAYER_MAP] as $line) {
@@ -180,15 +202,32 @@ class MapBuilder
     /**
      * Tiles holding $item, as flat [y, x] pairs.
      *
+     * A centre and a range restrict the sweep to what a searcher could
+     * possibly reach. Scanning the whole map to keep the handful of tiles
+     * within sight is the kind of cost that stays hidden while the map is the
+     * size of the screen and dominates once it is not.
+     *
      * @return list<array{int, int}>
      */
-    public function positionsOf(string $item): array
+    public function positionsOf(string $item, ?Point $around = null, ?int $range = null): array
     {
         $found = [];
 
-        foreach ($this->layers[self::LAYER_MAP] as $y => $line) {
-            foreach ($line as $x => $tile) {
-                if ($tile === $item) {
+        $top = 0;
+        $bottom = $this->getHeight() - 1;
+        $left = 0;
+        $right = $this->getWidth() - 1;
+
+        if (null !== $around && null !== $range) {
+            $top = max($top, $around->getY() - $range);
+            $bottom = min($bottom, $around->getY() + $range);
+            $left = max($left, $around->getX() - $range);
+            $right = min($right, $around->getX() + $range);
+        }
+
+        for ($y = $top; $y <= $bottom; $y++) {
+            for ($x = $left; $x <= $right; $x++) {
+                if (($this->layers[self::LAYER_MAP][$y][$x] ?? null) === $item) {
                     $found[] = [$y, $x];
                 }
             }
@@ -262,6 +301,10 @@ class MapBuilder
     public function setItem(Point $position, string $item, string $layer = self::LAYER_MAP): void
     {
         $this->layers[$layer][$position->getY()][$position->getX()] = $item;
+
+        if (self::LAYER_MAP === $layer) {
+            $this->costGrid = null;
+        }
     }
 
     public function clearLayer(string $layer): void

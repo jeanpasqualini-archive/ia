@@ -132,4 +132,47 @@ final class CatBehaviourTest extends TestCase
         self::assertCount(1, $chat->getIa()->getObjectifs());
         self::assertSame(0, $chat->getEstomac()->getNouriture());
     }
+
+    /**
+     * A cat only sees so far, so on a map larger than its sight it will often
+     * have nothing to walk towards. Standing still would read as a broken cat
+     * rather than as a hungry one.
+     */
+    public function testAHungryCatWithNothingInSightGoesLooking(): void
+    {
+        $world = WorldFactory::fromRows(['XXXXX', 'XXXXX', 'XXXXX']);
+        $chat = WorldFactory::chat($world);
+        $chat->getEstomac()->setNouriture(0);
+        $start = (string) $chat->getPosition();
+
+        for ($i = 0; $i < 4; $i++) {
+            $chat->getIa()->update($world);
+            $chat->update($world);
+        }
+
+        self::assertNotSame($start, (string) $chat->getPosition(), 'il est parti voir ailleurs');
+    }
+
+    public function testAFlowerBeyondSightIsNotWalkedToStraightAway(): void
+    {
+        $world = WorldFactory::fromRows([str_repeat('X', 30) . 'F']);
+        $chat = WorldFactory::chat($world);
+        $chat->getEstomac()->setNouriture(0);
+
+        // One tick to raise "hungry" — the stomach speaks on the player's own
+        // update, after the AI's — then one for the goal to act on it.
+        for ($i = 0; $i < 3; $i++) {
+            $chat->getIa()->update($world);
+            $chat->update($world);
+        }
+
+        $objectifs = $chat->getIa()->getObjectifs();
+
+        self::assertCount(1, $objectifs);
+        self::assertStringStartsWith(
+            'Explore',
+            $objectifs[0]->describe(),
+            'la fleur est a trente cases, il en voit vingt cinq'
+        );
+    }
 }

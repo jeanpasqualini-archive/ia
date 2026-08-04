@@ -99,6 +99,46 @@ final class MapBuilderTest extends TestCase
     }
 
     /**
+     * Scanning the whole map to keep the handful of tiles a cat can see is
+     * the kind of cost that hides while the map is the size of the screen.
+     */
+    public function testPositionsCanBeLimitedToWhatIsWithinReach(): void
+    {
+        $map = new MapBuilder([
+            'FXXXXF',
+            'XXXXXX',
+            'FXXXXF',
+        ]);
+
+        self::assertCount(4, $map->positionsOf(MapBuilder::FLEUR));
+
+        // The box around 1;1 reaches the whole left column and neither of the
+        // flowers on the right.
+        self::assertSame([[0, 0], [2, 0]], $map->positionsOf(MapBuilder::FLEUR, new Point(1, 1), 1));
+        self::assertCount(4, $map->positionsOf(MapBuilder::FLEUR, new Point(2, 1), 5), 'la boite deborde la carte sans casser');
+    }
+
+    /**
+     * The grid is rebuilt only when the terrain changes. A cat moving writes
+     * to the player layer every frame, and throwing the grid away each time
+     * would undo the point of keeping it.
+     */
+    public function testTheCostGridIsKeptUntilTheTerrainChanges(): void
+    {
+        $map = new MapBuilder(['XEX', 'XXX']);
+        $first = $map->costGrid();
+
+        $map->setItem(new Point(0, 0), '1', MapBuilder::LAYER_PLAYER);
+
+        self::assertSame($first, $map->costGrid(), 'un joueur qui bouge ne change pas les couts');
+
+        $map->setItem(new Point(1, 0), MapBuilder::HERBE);
+
+        self::assertNotSame($first, $map->costGrid(), 'le lac comble est devenu praticable');
+        self::assertSame(1, $map->cost(new Point(1, 0)));
+    }
+
+    /**
      * Terrain rows are packed back into strings on the way out, which is what
      * makes a snapshot of a large map affordable. The player layer must not
      * be: it is sparse, written at whatever coordinates the cats stand on,

@@ -147,6 +147,57 @@ final class PathFinderTest extends TestCase
     }
 
     /**
+     * A search bounded by what the searcher can see is what lets the map grow
+     * without the simulation slowing down. Measured on a 256x160 world with a
+     * flower that exists but cannot be reached — the case that forces the
+     * flood to give up — an unbounded search took 32 ms; bounded, it does not
+     * register.
+     */
+    public function testAFlowerOutOfSightIsNotFound(): void
+    {
+        $finder = $this->finder([
+            'XXXXXXXXXXF',
+        ]);
+
+        self::assertNull($finder->toNearest(new Point(0, 0), MapBuilder::FLEUR, 5), 'hors de vue');
+        self::assertNotNull($finder->toNearest(new Point(0, 0), MapBuilder::FLEUR, 10), 'a portee');
+    }
+
+    public function testWithoutARangeEverythingIsStillVisible(): void
+    {
+        $finder = $this->finder([
+            'XXXXXXXXXXXXXXXXXXXXF',
+        ]);
+
+        self::assertNotNull($finder->toNearest(new Point(0, 0), MapBuilder::FLEUR));
+    }
+
+    /**
+     * The budget is spent in cost, not in distance, and undergrowth costs
+     * three times what grass does. A cat therefore sees three times less far
+     * through a wood than across a meadow — behaviour that would otherwise
+     * have had to be written by hand.
+     */
+    public function testAWoodShortensTheSightLine(): void
+    {
+        $meadow = $this->finder(['XXXXXF']);
+        $wood = $this->finder(['XYYYYF']);
+        $from = new Point(0, 0);
+
+        self::assertNotNull($meadow->toNearest($from, MapBuilder::FLEUR, 5), 'cinq cases de prairie');
+        self::assertNull($wood->toNearest($from, MapBuilder::FLEUR, 5), 'les memes cinq cases de sous-bois');
+        self::assertNotNull($wood->toNearest($from, MapBuilder::FLEUR, 14), 'assez de budget pour traverser');
+    }
+
+    public function testTheRangeBoundsAPlainRouteToo(): void
+    {
+        $finder = $this->finder(['XXXXXXXXXX']);
+
+        self::assertNull($finder->to(new Point(0, 0), new Point(9, 0), 4));
+        self::assertNotNull($finder->to(new Point(0, 0), new Point(9, 0), 9));
+    }
+
+    /**
      * @param list<Point> $route
      *
      * @return list<string>
