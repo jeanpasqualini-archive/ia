@@ -123,32 +123,6 @@ final class SdlRenderTest extends TestCase
      * 1:8 — the picture closes into a wedge. Swapping views must not cost the
      * zoom the map view was set to either.
      */
-    /**
-     * A frame through a cat's eyes is composed like any other, with no window
-     * anywhere near it.
-     */
-    public function testTheWorldIsSeenFromWhereTheCatStands(): void
-    {
-        $container = new WorldContainer();
-        $container->setWorld(WorldFactory::fromRows(array_fill(0, 40, str_repeat('X', 40)), chatX: 20, chatY: 20));
-
-        $render = $this->render(container: $container);
-        $render->toggleView();
-        $render->toggleView();
-
-        [$eyes] = $render->compose(array_fill(0, 40, array_fill(0, 40, 'X')));
-
-        self::assertSame(256, $eyes->width());
-        self::assertSame(160, $eyes->height());
-
-        // Sky above the horizon and ground below it: a picture that were one
-        // flat colour would mean the rays never met anything at all.
-        $above = $eyes->at(128, 20);
-        $below = $eyes->at(128, 140);
-
-        self::assertNotSame($above, $below, 'le ciel et le sol se confondent');
-    }
-
     public function testTheIsometricViewIsAlwaysCloseAndGivesTheZoomBack(): void
     {
         $camera = new Camera();
@@ -166,12 +140,6 @@ final class SdlRenderTest extends TestCase
         self::assertTrue($render->zoom(true));
         self::assertSame(1, $camera->scale(), 'la 2.5d a echantillonne en zoomant');
         self::assertFalse($render->zoom(true), 'il n y a pas de cran au dela');
-
-        // Three views in a ring: map, isometric, the cat's eyes, and back.
-        // The map's zoom comes back only on the way round to it.
-        self::assertTrue($render->toggleView(), 'les yeux du chat');
-        self::assertSame(1, $camera->scale());
-        self::assertFalse($render->zoom(true), 'rien a zoomer derriere des yeux');
 
         self::assertFalse($render->toggleView(), 'retour a la carte');
         self::assertSame(4, $camera->scale(), 'le zoom de la carte est perdu');

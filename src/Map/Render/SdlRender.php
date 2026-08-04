@@ -114,20 +114,6 @@ final class SdlRender implements GameRenderInterface
 
     private IsoView $iso;
 
-    private FirstPerson $eyes;
-
-    /**
-     * Where each cat was last seen, so a heading can be worked out.
-     *
-     * A cat has no facing of its own — nothing in the simulation ever needed
-     * one — and giving it one would put a field in `World`, which is
-     * serialized. It is derived here instead, from where the animal actually
-     * went, and kept when it stands still so the view does not snap back to
-     * north every time it stops to eat.
-     *
-     * @var array<int, array{int, int, float, float}>
-     */
-    private array $facing = [];
 
     /**
      * Which way the world is being looked at.
@@ -136,10 +122,9 @@ final class SdlRender implements GameRenderInterface
      * dashboard are the same in both, so a cat is in the same place and the
      * meadow is the same green. `v` swaps them.
      */
-    /** Three ways of looking, cycled by `v`. */
+    /** Two ways of looking, swapped by `v`. */
     private const VIEW_MAP = 0;
     private const VIEW_ISO = 1;
-    private const VIEW_EYES = 2;
 
     private int $view = self::VIEW_MAP;
 
@@ -209,7 +194,6 @@ final class SdlRender implements GameRenderInterface
         $this->clock ??= static fn (): float => microtime(true);
         $this->cat = new CatSprite();
         $this->iso = new IsoView($this->palette);
-        $this->eyes = new FirstPerson($this->palette);
         $this->dashboard = new Dashboard($this->memoryManager, $this->memoryUsage);
         $this->bufferLog = new BufferLogger();
         $this->logger->addLogger($this->bufferLog);
@@ -352,11 +336,9 @@ final class SdlRender implements GameRenderInterface
             return;
         }
 
-        $surface = match ($this->view) {
-            self::VIEW_MAP => $this->mapTexture,
-            self::VIEW_ISO => $this->isoTextures[$this->isoZoom],
-            default => $this->isoTextures[self::ISO_CLOSE],
-        };
+        $surface = self::VIEW_MAP === $this->view
+            ? $this->mapTexture
+            : $this->isoTextures[$this->isoZoom];
         $this->sdl->SDL_UpdateTexture($surface, null, $mapPixels->bytes(), $mapPixels->width() * 4);
         $this->sdl->SDL_UpdateTexture($this->sidebarTexture, null, $sidebar->bytes(), $sidebar->width() * 4);
         $this->sdl->SDL_UpdateTexture($this->bottomTexture, null, $bottom->bytes(), $bottom->width() * 4);
@@ -387,11 +369,7 @@ final class SdlRender implements GameRenderInterface
         $this->lastMap = $map;
 
         return [
-            match ($this->view) {
-                self::VIEW_MAP => $this->paintMap($map),
-                self::VIEW_ISO => $this->paintIso($map),
-                default => $this->paintEyes($map),
-            },
+            self::VIEW_MAP === $this->view ? $this->paintMap($map) : $this->paintIso($map),
             $this->paintSidebar(),
             $this->paintBottom(),
         ];
@@ -412,12 +390,12 @@ final class SdlRender implements GameRenderInterface
     public function toggleView(): bool
     {
         $was = $this->view;
-        $this->view = ($this->view + 1) % 3;
+        $this->view = ($this->view + 1) % 2;
 
-        // Captured on the way *out* of the map and nowhere else. Recomputed on
-        // every swap it would be reset to zero the second time round — the
-        // camera is already at its closest by then — and the map's zoom would
-        // be quietly lost on the way through the other views.
+        // Captured on the way *out* of the map and nowhere else, so that
+        // swapping back and forth cannot quietly lose it: by the second swap
+        // the camera is already at its closest and a fresh count would be
+        // zero.
         if (self::VIEW_MAP === $was) {
             $this->zoomAway = 0;
 
@@ -458,12 +436,6 @@ final class SdlRender implements GameRenderInterface
             $closer ? $this->camera->zoomIn() : $this->camera->zoomOut();
 
             return true;
-        }
-
-        // Nothing to zoom behind a cat's eyes: how near a thing looks is how
-        // near it is, which is the whole of what the view says.
-        if (self::VIEW_EYES === $this->view) {
-            return false;
         }
 
         $wanted = $closer ? self::ISO_CLOSE : self::ISO_WIDE;
@@ -524,51 +496,6 @@ final class SdlRender implements GameRenderInterface
         $b = max(0, min(255, (int) round(($colour & 0xFF) * $factor)));
 
         return 0xFF000000 | ($r << 16) | ($g << 8) | $b;
-    }
-
-    /**
-     * The world through the selected cat's eyes.
-     *
-     * The heading is derived from where the animal actually went rather than
-     * stored on it: nothing in the simulation ever needed a facing, and adding
-     * one would put a field in `World`, which is serialized. It is kept when
-     * the cat stands still, or the view would snap back to north every time it
-     * stopped to eat.
-     *
-     * @param array<int, array<int, string>> $map
-     */
-    private function paintEyes(array $map): Pixels
-    {
-        $player = $this->selectedPlayer();
-
-        if (null === $player) {
-            return new Pixels($this->eyesWidth(), $this->eyesHeight(), self::BACKGROUND);
-        }
-
-        $index = $this->activeTab;
-        $x = $player->getPosition()->getX();
-        $y = $player->getPosition()->getY();
-        [$wasX, $wasY, $dirX, $dirY] = $this->facing[$index] ?? [$x, $y, 0.0, 1.0];
-
-        if ($x !== $wasX || $y !== $wasY) {
-            $length = sqrt((($x - $wasX) ** 2) + (($y - $wasY) ** 2));
-            $dirX = ($x - $wasX) / $length;
-            $dirY = ($y - $wasY) / $length;
-        }
-
-        $this->facing[$index] = [$x, $y, $dirX, $dirY];
-
-        return $this->eyes->paint($map, $player, [$dirX, $dirY], $this->eyesWidth(), $this->eyesHeight());
-    }
-
-    private function eyesWidth(): int
-    {
-        return intdiv($this->mapWidth, self::ISO_CLOSE);
-    }
-
-    private function eyesHeight(): int
-    {
-        return intdiv($this->mapHeight, self::ISO_CLOSE);
     }
 
     private function isoWidth(): int
@@ -943,11 +870,9 @@ final class SdlRender implements GameRenderInterface
             $this->timeControl->isPaused() ? '▶' : '▮▮',
             $this->timeControl->speedLabel(),
             $this->camera->label(),
-            match ($this->view) {
-                self::VIEW_MAP => 'v 2.5d',
-                self::VIEW_ISO => sprintf('v yeux du chat    z de pres (x%d)', $this->isoZoom),
-                default => 'v carte',
-            }
+            self::VIEW_MAP === $this->view
+                ? 'v 2.5d'
+                : sprintf('v carte    z de pres (x%d)', $this->isoZoom)
         );
 
         BitmapFont::write(
