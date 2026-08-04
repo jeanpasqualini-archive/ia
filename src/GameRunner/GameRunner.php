@@ -24,6 +24,7 @@ use Map\World\WorldContainer;
 use Memory\MemoryManager;
 use PhpTui\Term\Terminal;
 use Psr\Log\LogLevel;
+use Runtime\Camera;
 use Runtime\MemoryUsage;
 use Runtime\TimeControl;
 use Snapshot\Instant;
@@ -44,6 +45,19 @@ class GameRunner
      * the whole ring within a single frame.
      */
     private const SNAPSHOT_EVERY_FRAMES = 5;
+
+    /**
+     * The world, in tiles. It used to be built at exactly the size of the
+     * terminal, which made the map whatever the screen happened to be and
+     * left nothing to explore.
+     *
+     * Generous on purpose — some eight screens across on a hundred column
+     * terminal — and affordable for two reasons that had to be settled first:
+     * a snapshot of it costs 8 KB rather than a megabyte, and a cat only
+     * searches as far as it can see.
+     */
+    private const WORLD_WIDTH = 256;
+    private const WORLD_HEIGHT = 160;
 
     private bool $quit = false;
 
@@ -79,6 +93,8 @@ class GameRunner
 
     private TimeControl $timeControl;
 
+    private Camera $camera;
+
     private MemoryUsage $memoryUsage;
 
     private TuiRender $render;
@@ -95,6 +111,7 @@ class GameRunner
     ) {
         $this->terminal ??= Terminal::new();
         $this->timeControl = new TimeControl();
+        $this->camera = new Camera();
         $this->memoryUsage = new MemoryUsage();
     }
 
@@ -152,7 +169,8 @@ class GameRunner
             $this->worldContainer,
             $this->memoryManager,
             $this->timeControl,
-            audio: $this->audio
+            audio: $this->audio,
+            camera: $this->camera
         );
 
         try {
@@ -269,6 +287,12 @@ class GameRunner
             'x' => $this->persist(),
             'r' => $this->reload(),
             'm' => $this->toggleMute(),
+            'z' => $this->zoom(closer: true),
+            'Z' => $this->zoom(closer: false),
+            InputControllerInterface::UP => $this->look(0, -1),
+            InputControllerInterface::DOWN => $this->look(0, 1),
+            InputControllerInterface::LEFT => $this->look(-1, 0),
+            InputControllerInterface::RIGHT => $this->look(1, 0),
             "\t" => $this->nextTab(),
             // Historic bindings, kept so the old muscle memory still works.
             'b' => $this->togglePause(true),
@@ -326,6 +350,26 @@ class GameRunner
     private function changeSpeed(bool $faster): bool
     {
         $faster ? $this->timeControl->faster() : $this->timeControl->slower();
+        $this->audio->play(SoundEffect::Blip);
+
+        return true;
+    }
+
+    /**
+     * Move the view. The world is larger than the screen now, so looking
+     * around is a thing one does — which is why the arrow keys were taken
+     * away from the cat, whose AI walks it anyway.
+     */
+    private function look(int $dx, int $dy): bool
+    {
+        $this->camera->pan($dx, $dy);
+
+        return true;
+    }
+
+    private function zoom(bool $closer): bool
+    {
+        $closer ? $this->camera->zoomIn() : $this->camera->zoomOut();
         $this->audio->play(SoundEffect::Blip);
 
         return true;
@@ -507,14 +551,13 @@ class GameRunner
     }
 
     /**
-     * A world coming back from a snapshot carries no services: it gets the
-     * live logger and input controller re-attached here.
+     * A world coming back from a snapshot carries no services: the live
+     * logger is re-attached here.
      */
     private function setWorld(World $world): void
     {
         $this->world = $world;
         $this->world->setLogger($this->logger);
-        $this->world->setInputController($this->input);
         $this->worldContainer->setWorld($world);
 
         // A new map, or a jump back through the time machine, moves the
@@ -525,17 +568,21 @@ class GameRunner
 
     private function createWorld(): World
     {
-        $size = $this->render->getSize();
-        $map = new MapBuilder($this->mapProvider($size['y'], $size['x'])->getMap(), $this->logger);
+        $map = new MapBuilder(
+            $this->mapProvider(self::WORLD_HEIGHT, self::WORLD_WIDTH)->getMap(),
+            $this->logger
+        );
 
+        // Spread over the map rather than huddled in the first screen: with a
+        // world this size, two cats a few tiles apart would compete for the
+        // same flowers and the rest of it would never be walked on.
         return new World(
             $map,
             [
-                $this->createChat($map, 5, 5),
-                $this->createChat($map, (int) ($size['x'] / 2), (int) ($size['y'] / 2)),
+                $this->createChat($map, intdiv($map->getWidth(), 4), intdiv($map->getHeight(), 4)),
+                $this->createChat($map, intdiv($map->getWidth() * 3, 4), intdiv($map->getHeight() * 3, 4)),
             ],
-            $this->logger,
-            $this->input
+            $this->logger
         );
     }
 

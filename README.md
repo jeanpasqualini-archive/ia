@@ -21,6 +21,7 @@ barre de contrôle du temps en bas.
 
 Touches :
  - `espace` lecture/pause, `n` avance d'un tick, `-`/`+` vitesse
+ - `flèches` déplacent la vue, `z`/`Z` zoom et dézoom
  - `t` time machine, puis `p`/`a` pour naviguer dans les snapshots
  - `tab` ou `1`..`9` pour changer d'onglet IA
  - `r` nouvelle map, `x` persiste la mémoire, `m` coupe le son, `q` quitte
@@ -35,6 +36,13 @@ quand même, en silence.
 Le terrain est généré par bruit fractal : lacs dans les creux, forêts sur les
 hauteurs, prairies et parterres de fleurs entre les deux. `--seed 42` rejoue
 exactement la même carte.
+
+La carte fait 256×160 tuiles, soit environ huit écrans : elle est plus grande
+que ce qu'on en voit. Les flèches déplacent la vue pendant que les IA jouent,
+`z`/`Z` rapprochent ou éloignent jusqu'à voir la carte entière. Un chat reste
+visible à tous les niveaux de zoom, même quand une cellule représente
+soixante-quatre tuiles. Chaque chat ne voit qu'à vingt-cinq cases autour de
+lui : quand il n'a pas de fleur en vue, il part explorer.
 
 Voici une capture
 

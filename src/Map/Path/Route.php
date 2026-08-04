@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Map\Path;
 
-use Map\Location\Direction;
 use Map\Location\Point;
 use Map\Player\PlayerInterface;
 use Map\World\World;
@@ -64,10 +63,6 @@ class Route
             return;
         }
 
-        $position->setDirection(new Direction(
-            $next->getX() - $position->getX(),
-            $next->getY() - $position->getY(),
-        ));
         $position->setX($next->getX());
         $position->setY($next->getY());
 

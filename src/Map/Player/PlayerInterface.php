@@ -10,8 +10,6 @@ use Map\World\World;
 
 interface PlayerInterface
 {
-    public function move(): void;
-
     public function getPosition(): Point;
 
     public function getIdentifiant(): string;

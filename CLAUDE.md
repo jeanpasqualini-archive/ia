@@ -17,7 +17,7 @@ make shell    # shell in the container
 make help     # all targets
 ```
 
-Keys: `space` play/pause, `n` one tick, `-`/`+` speed, `t` time machine then `p`/`a` to browse snapshots, `tab` or `1`..`9` to switch AI panel, `r` new map, `x` persist memory, `m` mute, `q` quit (`b`/`s` are kept as pause/play aliases). The game starts paused; `--play` starts it running.
+Keys: `space` play/pause, `n` one tick, `-`/`+` speed, **arrows to move the view, `z`/`Z` to zoom in and out**, `t` time machine then `p`/`a` to browse snapshots, `tab` or `1`..`9` to switch AI panel, `r` new map, `x` persist memory, `m` mute, `q` quit (`b`/`s` are kept as pause/play aliases). The game starts paused; `--play` starts it running.
 
 In raw mode Ctrl+C is delivered as a key event, not a signal — quit with `q`. If the process is killed from outside, the tty is left raw: run `reset`.
 
@@ -52,6 +52,20 @@ Note durations are counted **in samples, never in seconds**: rounding each note 
 `SoundBoard::BUFFER_SECONDS` keeps a fifth of a second ahead of the speaker. Less and a slow frame — batching a thousand ticks at x1000 — drains the queue and the music gaps; more and a key press blip is heard too long after the key.
 
 **Sound effects are triggered by the runner watching the world, never by the domain announcing them.** `World` is serialized into snapshots and an FFI handle is not serializable, so nothing audio-shaped may be reachable from it. Eating is detected by counting flowers between frames — they only ever disappear by being eaten — which is also what makes it right at x1000, where one frame may contain several meals. `GameRunner::setWorld()` rebases that count, otherwise a new map or a jump through the time machine would be heard as a meal.
+
+## The world is larger than the screen
+
+The map used to be built at exactly the size of the terminal, so the world *was* the screen and there was nothing to look at that was not already visible. It is now a fixed **256x160 tiles** (`GameRunner::WORLD_WIDTH`), some eight screens across on a hundred column terminal, and `TuiRender::getSize()` reports the size of the *view* rather than of the world.
+
+That was affordable only once two things had been settled, both measured on a map that size: a snapshot cost 1.07 MB and now costs 8 KB, and an unbounded failed search cost 32ms and now costs nothing. Neither was visible while the map fitted the screen.
+
+`Runtime\Camera` holds the window: origin in tiles, and a scale of 1, 2, 4 or 8 world tiles per rendered cell. Only zooming *out* is offered — at 1:1 a cell is already a tile, and a closer view would enlarge the blocks without adding anything to them. It lives in `Runtime` for the same reason `TimeControl` does: it is a way of looking at the simulation, not part of it, and anything reachable from `World` has to survive serialization.
+
+Zooming **holds the middle of the view still**; anchored on the corner, whatever is being looked at slides off exactly when the user asks to see it closer. Panning moves a fixed number of *cells*, so a keypress covers eight times as much ground at 1:8 — which is the point of being zoomed out. `clamp()` runs on every frame rather than after every move, because zooming changes how much ground the view covers and a corner that was legal a moment ago may hang off the edge without anything having been panned.
+
+**A cell is sampled, not averaged.** Reading every tile of every block would be sixty four lookups a cell at 1:8, some thirty thousand a frame, which costs more than the simulation it is showing; terrain is contiguous enough that one tile speaks for its neighbours. Sampling loses anything smaller than a block — a lone flower usually disappears at 1:4 — with one exception: **players are drawn from their own positions afterwards, so a cat is never sampled away.** Losing sight of a cat is precisely what one zooms out to avoid. Shades are hashed from world coordinates rather than screen ones, so the grain of the ground stays put while the view slides over it.
+
+Cats spawn at quarter and three-quarter of the map rather than in the first screen: two cats a few tiles apart would compete for the same flowers and the rest of the world would never be walked on.
 
 ## Memory and exit 137
 
@@ -91,9 +105,9 @@ Three things scale with the batch rather than the tick: the logger is muted for 
 
 Asking for x1000 does not make the machine deliver it, so `observe()` records the rate actually reached and the control bar turns red with the real multiplier. Measured here: ~20k ticks/s in isolation (x1300), ~x360 through the full render loop. `--speed N` starts at a given rung, which is also how that gets measured.
 
-**World is the simulated state.** Map, players, timer, and the per-player AI. Services are injected and explicitly excluded from `__sleep`. Input is drained by the loop, never by `World` — both draining the same event stream would make each miss half the key presses.
+**World is the simulated state.** Map, players, timer, and the per-player AI. Services are injected and explicitly excluded from `__sleep`. `World` no longer knows about the keyboard at all: it held an input controller only so a cat could be steered by hand, and the arrows now move the camera instead.
 
-**AI is per-player and event-driven.** `ApplicationIA` walks every player, calls its AI, then its `update()`, then enforces where it may stand — clamped to the map and reverted if it landed on an impassable tile. That is the single authority on position, whatever moved the player. `Estomac` emits `HungryEvent`/`FullEvent` each tick; `CatIA` turns hungry into a `Manger` goal and drops all goals when full. **Goals own movement while active**; the free-roam `move()` (keyboard direction) only runs when there is no goal. Add a behaviour by writing an `ObjectifInterface` under `src/IA/Objectif/` and subscribing it to an event in the AI class.
+**AI is per-player and event-driven.** `ApplicationIA` walks every player, calls its AI, then its `update()`, then enforces where it may stand — clamped to the map and reverted if it landed on an impassable tile. That is the single authority on position, whatever moved the player. `Estomac` emits `HungryEvent`/`FullEvent` each tick; `CatIA` turns hungry into a `Manger` goal and drops all goals when full. **Goals own movement**, and now all of it: the free-roam `move()` driven by the arrow keys is gone, along with the `Direction` it wrote — nothing read it, and it was serialized into every snapshot. Add a behaviour by writing an `ObjectifInterface` under `src/IA/Objectif/` and subscribing it to an event in the AI class.
 
 ### Pathfinding
 
@@ -133,7 +147,7 @@ Serialization is the sharp edge of this codebase. Anything added to `World` or a
 
 ## Tests
 
-`make test` — 125 tests covering map queries and bounds, cat behaviour end-to-end (walks, eats, turns the flower to grass), snapshot round-trips, headless frame rendering, and the audio (oscillators, mixing, loop length, the feeding of the device against a fake output). The SDL test skips itself when the library is absent, which is the normal outcome in the container. `tests/WorldFactory.php` builds worlds from ASCII rows so nothing depends on the random provider.
+`make test` — 133 tests covering map queries and bounds, cat behaviour end-to-end (walks, eats, turns the flower to grass), snapshot round-trips, headless frame rendering, and the audio (oscillators, mixing, loop length, the feeding of the device against a fake output). The SDL test skips itself when the library is absent, which is the normal outcome in the container. `tests/WorldFactory.php` builds worlds from ASCII rows so nothing depends on the random provider.
 
 `phpunit.xml.dist` fails on warnings, notices and deprecations, but `ignoreIndirectDeprecations` keeps vendor deprecations from failing the suite.
 

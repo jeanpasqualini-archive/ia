@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace Map\World;
 
 use IA\ApplicationIA;
-use InputController\InputControllerInterface;
-use InputController\NullInputController;
 use Logger\MultipleLogger;
 use Map\Builder\MapBuilder;
 use Map\Player\PlayerInterface;
@@ -30,21 +28,10 @@ class World
         private MapBuilder $map,
         private array $players = [],
         private LoggerInterface $logger = new MultipleLogger(),
-        private InputControllerInterface $inputController = new NullInputController(),
     ) {
         $this->worldIA = new ApplicationIA();
         $this->timer = new Timer();
         $this->eventDispatcher = new EventDispatcher();
-    }
-
-    public function getInputController(): InputControllerInterface
-    {
-        return $this->inputController;
-    }
-
-    public function setInputController(InputControllerInterface $inputController): void
-    {
-        $this->inputController = $inputController;
     }
 
     public function getLogger(): LoggerInterface
@@ -112,7 +99,6 @@ class World
     public function __wakeup(): void
     {
         $this->logger = new MultipleLogger();
-        $this->inputController = new NullInputController();
         $this->eventDispatcher = new EventDispatcher();
     }
 }

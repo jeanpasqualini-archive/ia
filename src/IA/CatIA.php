@@ -6,7 +6,6 @@ namespace IA;
 
 use IA\Objectif\Manger;
 use IA\Objectif\ObjectifInterface;
-use Map\Location\Direction;
 use Map\Player\Chat;
 use Map\Player\Chat\Event\FullEvent;
 use Map\Player\Chat\Event\HungryEvent;
@@ -44,10 +43,6 @@ class CatIA implements IAInterface
         }
 
         $this->objectifs = [];
-
-        // Drop the heading the goal was steering with, otherwise the cat keeps
-        // drifting in that direction once it is fed.
-        $this->chat->getPosition()->setDirection(new Direction(0, 0));
     }
 
     /**
@@ -60,15 +55,10 @@ class CatIA implements IAInterface
 
     public function update(World $world): void
     {
-        // Goals own the movement while they are active. The previous version
-        // also stepped the cat here, so a goal moved it twice per tick and it
-        // oscillated around its destination without ever arriving.
-        if ([] === $this->objectifs) {
-            $this->chat->move();
-
-            return;
-        }
-
+        // Goals own the movement, and now they own all of it. There used to
+        // be a free-roam step here, driven by the arrow keys, which the map
+        // outgrowing the screen made both awkward — the arrows are how one
+        // looks around — and pointless, since the AI walks the cat anyway.
         foreach ($this->objectifs as $objectif) {
             $objectif->update($world);
         }

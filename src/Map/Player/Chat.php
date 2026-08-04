@@ -30,11 +30,6 @@ class Chat extends Player implements PlayerHasEstomac
         return $this->estomac;
     }
 
-    public function move(): void
-    {
-        $this->position->move();
-    }
-
     public function getIa(): IAInterface
     {
         return $this->ia;
@@ -43,13 +38,6 @@ class Chat extends Player implements PlayerHasEstomac
     public function update(World $world): void
     {
         parent::update($world);
-
-        // Manual steering only applies while the cat has nothing better to do:
-        // the previous version overwrote the direction the AI had just set,
-        // so goals and arrow keys fought each other every tick.
-        if ([] === $this->ia->getObjectifs()) {
-            $this->position->setDirection($world->getInputController()->getDirection());
-        }
 
         $this->estomac->update($world);
     }

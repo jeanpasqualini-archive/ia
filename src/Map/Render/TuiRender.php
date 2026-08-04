@@ -8,6 +8,7 @@ use Audio\SoundBoard;
 use IA\CatIA;
 use Logger\BufferLogger;
 use Logger\MultipleLogger;
+use Map\Builder\MapBuilder;
 use Map\Player\PlayerHasEstomac;
 use Map\Player\PlayerInterface;
 use Map\World\WorldContainer;
@@ -34,6 +35,7 @@ use PhpTui\Tui\Text\Title;
 use PhpTui\Tui\Widget\Borders;
 use PhpTui\Tui\Widget\Direction;
 use PhpTui\Tui\Widget\Widget;
+use Runtime\Camera;
 use Runtime\MemoryUsage;
 use Runtime\TimeControl;
 
@@ -71,6 +73,7 @@ class TuiRender implements MapRenderInterface
         private MemoryUsage $memoryUsage = new MemoryUsage(),
         private ?TilePalette $palette = null,
         private ?SoundBoard $audio = null,
+        private Camera $camera = new Camera(),
     ) {
         $this->palette ??= TilePalette::detect();
         $this->bufferLog = new BufferLogger();
@@ -127,8 +130,13 @@ class TuiRender implements MapRenderInterface
     }
 
     /**
-     * Size of the playable area, in tiles, once the dashboard chrome is
-     * subtracted from the terminal.
+     * Size of the *view* in cells, once the dashboard chrome is subtracted
+     * from the terminal.
+     *
+     * This used to be the size of the world as well, because the map was
+     * built to fit the screen exactly. It is now only how much of the world
+     * fits at a time: at 1:1 a cell is a tile, and the camera decides which
+     * ones.
      *
      * @return array{x: int, y: int}
      */
@@ -139,7 +147,7 @@ class TuiRender implements MapRenderInterface
         $cols = $size instanceof Size ? $size->cols : 80;
         $lines = $size instanceof Size ? $size->lines : 24;
 
-        // A tile spans two columns, so the map holds half as many of them.
+        // A tile spans two columns, so a row holds half as many of them.
         return [
             'x' => max(10, intdiv($cols - self::SIDEBAR_WIDTH - 2, TilePalette::TILE_WIDTH)),
             'y' => max(10, $lines - self::LOG_HEIGHT - self::CONTROL_HEIGHT - 2),
@@ -162,6 +170,10 @@ class TuiRender implements MapRenderInterface
      */
     private function layout(array $map): Widget
     {
+        // Drawn before the title is built: rendering is what clamps the
+        // camera, and a title read beforehand would be a frame behind.
+        $window = $this->mapWidget($map);
+
         return GridWidget::default()
             ->direction(Direction::Vertical)
             ->constraints(
@@ -177,7 +189,7 @@ class TuiRender implements MapRenderInterface
                         Constraint::length(self::SIDEBAR_WIDTH),
                     )
                     ->widgets(
-                        $this->block('Carte', $this->mapWidget($map)),
+                        $this->block($this->mapTitle($map), $window),
                         $this->sidebar(),
                     ),
                 $this->block('Journal', $this->logWidget()),
@@ -487,23 +499,117 @@ class TuiRender implements MapRenderInterface
     }
 
     /**
+     * The window the camera is looking through.
+     *
+     * The map is larger than the screen, so only part of it is drawn, and at
+     * anything but the closest zoom a cell stands for a block of tiles. That
+     * block is **sampled**, not averaged: reading every tile of every block
+     * would be sixty four lookups a cell at 1:8, some thirty thousand a frame,
+     * which costs more than the simulation it is showing. Terrain is
+     * contiguous enough that one tile speaks for its neighbours.
+     *
+     * Sampling does lose things smaller than a block — a lone flower usually
+     * disappears at 1:4 — and that is a deliberate trade, with one exception:
+     * players are drawn from their own positions afterwards, so a cat is
+     * never sampled away. Losing sight of a cat is precisely what one zooms
+     * out to avoid.
+     *
+     * Shades are hashed from world coordinates rather than screen ones, so
+     * the grain of the ground stays put while the view slides over it.
+     *
      * @param array<int, array<int, string>> $map
      */
     private function mapWidget(array $map): Widget
     {
+        $view = $this->getSize();
+        $height = count($map);
+        $width = count($map[0] ?? []);
+
+        $this->camera->clamp($width, $height, $view['x'], $view['y']);
+
+        $scale = $this->camera->scale();
+        $originX = $this->camera->x();
+        $originY = $this->camera->y();
+        $players = $this->visiblePlayers($originX, $originY, $scale, $view);
+
         $lines = [];
 
-        foreach ($map as $y => $row) {
+        for ($row = 0; $row < $view['y']; $row++) {
+            $worldY = $originY + $row * $scale;
+
+            if ($worldY >= $height) {
+                break;
+            }
+
             $spans = [];
 
-            foreach ($row as $x => $tile) {
-                $spans[] = $this->palette->cell($tile, $x, $y);
+            for ($column = 0; $column < $view['x']; $column++) {
+                $worldX = $originX + $column * $scale;
+
+                if ($worldX >= $width) {
+                    break;
+                }
+
+                $tile = $players[$row][$column] ?? $map[$worldY][$worldX] ?? MapBuilder::HERBE;
+                $spans[] = $this->palette->cell($tile, $worldX, $worldY);
             }
 
             $lines[] = Line::fromSpans(...$spans);
         }
 
         return ParagraphWidget::fromText(Text::fromLines(...$lines));
+    }
+
+    /**
+     * Where the camera is, and how much of the world it holds. The map no
+     * longer fits on the screen, so this is the only way to know whether the
+     * cat one is looking for is off to the left or simply somewhere else.
+     *
+     * @param array<int, array<int, string>> $map
+     */
+    private function mapTitle(array $map): string
+    {
+        return sprintf(
+            'Carte %s  %d;%d de %dx%d  (fleches, z/Z)',
+            $this->camera->label(),
+            $this->camera->y(),
+            $this->camera->x(),
+            count($map[0] ?? []),
+            count($map),
+        );
+    }
+
+    /**
+     * Players placed on the grid of cells, as the glyph the palette expects.
+     *
+     * @param array{x: int, y: int} $view
+     *
+     * @return array<int, array<int, string>> indexed [row][column]
+     */
+    private function visiblePlayers(int $originX, int $originY, int $scale, array $view): array
+    {
+        $placed = [];
+
+        foreach (array_values($this->players()) as $index => $player) {
+            $x = $player->getPosition()->getX();
+            $y = $player->getPosition()->getY();
+
+            // Guarded before the division: intdiv truncates towards zero, so a
+            // player just off the left edge would otherwise land in column 0
+            // and appear inside the view.
+            if ($x < $originX || $y < $originY) {
+                continue;
+            }
+
+            $column = intdiv($x - $originX, $scale);
+            $row = intdiv($y - $originY, $scale);
+
+            if ($column < $view['x'] && $row < $view['y']) {
+                $placed[$row][$column] = (string) ($index + 1);
+            }
+        }
+
+        return $placed;
     }
 
     private function logWidget(): Widget

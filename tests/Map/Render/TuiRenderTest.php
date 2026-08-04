@@ -16,6 +16,7 @@ use PhpTui\Term\Terminal;
 use PhpTui\Term\Writer\StringWriter;
 use PhpTui\Tui\Display\Backend\DummyBackend;
 use PHPUnit\Framework\TestCase;
+use Runtime\Camera;
 use Runtime\MemoryUsage;
 use Runtime\TimeControl;
 use Snapshot\Instant;
@@ -255,6 +256,68 @@ final class TuiRenderTest extends TestCase
         }
     }
 
+    /**
+     * The map is larger than the screen, so only a window of it is drawn and
+     * the title has to say which one — it is the only way to tell a cat that
+     * is off to the left from one that is simply somewhere else.
+     */
+    public function testTheTitleSaysWhereTheCameraIsLooking(): void
+    {
+        $camera = new Camera();
+        $render = $this->render(camera: $camera);
+        $map = $this->emptyMap(64, 34);
+
+        $render->render($map);
+
+        self::assertStringContainsString('Carte 1:1', $this->backend->toString());
+        self::assertStringContainsString('de 64x34', $this->backend->toString());
+
+        $camera->zoomOut();
+        $render->render($map);
+
+        self::assertStringContainsString('Carte 1:2', $this->backend->toString());
+    }
+
+    /**
+     * Zooming out samples one tile per block, so anything smaller than a
+     * block is normally lost. Players are the exception, drawn from their own
+     * positions afterwards: losing sight of a cat is precisely what one zooms
+     * out to avoid.
+     */
+    public function testACatIsNeverSampledAwayWhenZoomingOut(): void
+    {
+        $world = WorldFactory::fromRows(['XX'], chatX: 40, chatY: 24);
+        $container = new WorldContainer();
+        $container->setWorld($world);
+
+        $camera = new Camera();
+        $render = $this->render(container: $container, camera: $camera);
+        $map = $this->emptyMap(64, 34);
+
+        $render->render($map);
+
+        // Counted rather than looked for: the panel draws the same marker, on
+        // purpose, so a cat reads as the same cat in both places.
+        $offScreen = substr_count($this->backend->toString(), '●');
+
+        $camera->zoomOut();
+        $render->render($map);
+
+        self::assertSame(
+            $offScreen + 1,
+            substr_count($this->backend->toString(), '●'),
+            'le chat entre dans le champ et survit a l echantillonnage'
+        );
+    }
+
+    /**
+     * @return array<int, array<int, string>>
+     */
+    private function emptyMap(int $width, int $height): array
+    {
+        return array_fill(0, $height, array_fill(0, $width, 'X'));
+    }
+
     public function testTheMemoryPanelReportsBothCeilingsAndTheSnapshotRing(): void
     {
         $memory = new MemoryManager('test');
@@ -290,6 +353,7 @@ final class TuiRenderTest extends TestCase
         ?TimeControl $timeControl = null,
         ?MemoryUsage $memoryUsage = null,
         ?SoundBoard $audio = null,
+        ?Camera $camera = null,
     ): TuiRender {
         $terminal = Terminal::new(
             AnsiPainter::new(StringWriter::new()),
@@ -306,6 +370,7 @@ final class TuiRenderTest extends TestCase
             $this->backend,
             $memoryUsage ?? new MemoryUsage(),
             audio: $audio,
+            camera: $camera ?? new Camera(),
         );
     }
 
