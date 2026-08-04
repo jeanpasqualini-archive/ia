@@ -20,6 +20,7 @@ use Map\Player\Chat;
 use Map\Provider\FileMapProvider;
 use Map\Provider\MapProviderInterface;
 use Map\Provider\TerrainMapProvider;
+use Map\Provider\UndergroundMapProvider;
 use Map\Render\TuiRender;
 use Map\World\World;
 use Map\World\WorldContainer;
@@ -60,6 +61,13 @@ class GameRunner
      */
     private const WORLD_WIDTH = 256;
     private const WORLD_HEIGHT = 160;
+
+    /**
+     * Ways down, spread on a coarse grid rather than drawn at random: they
+     * have to be findable, and a cat only looks twenty five tiles around
+     * itself.
+     */
+    private const CAVERNS = 40;
 
     private bool $quit = false;
 
@@ -565,7 +573,7 @@ class GameRunner
      */
     private function watchForEating(): void
     {
-        $flowers = count($this->world->getMap()->positionsOf(MapBuilder::NOURRITURE));
+        $flowers = $this->foodLeft();
 
         if ($flowers < $this->flowers) {
             $this->audio->play(SoundEffect::Eat);
@@ -635,13 +643,21 @@ class GameRunner
 
     private function draw(): void
     {
-        $map = $this->world->getMap();
+        // The view follows the cat the panel is describing, down a cavern and
+        // back up. Watching an empty surface while the cat one has selected is
+        // underground would be the worst of both.
+        $level = $this->render->selectedPlayer()?->getNiveau() ?? World::SURFACE;
+        $map = $this->world->levelNamed($level) ?? $this->world->getMap();
 
         $map->clearLayer(MapBuilder::LAYER_PLAYER);
 
         // Each player is stamped with its own index so the renderer can tell
         // them apart; every cat used to be the same indistinguishable letter.
         foreach (array_values($this->world->getPlayerCollection()) as $index => $player) {
+            if ($player->getNiveau() !== $level) {
+                continue;
+            }
+
             $map->setItem($player->getPosition(), (string) ($index + 1), MapBuilder::LAYER_PLAYER);
         }
 
@@ -663,7 +679,22 @@ class GameRunner
         // A new map, or a jump back through the time machine, moves the
         // flower count by any amount at all. Rebasing it here is what stops
         // that from being heard as a meal.
-        $this->flowers = count($world->getMap()->positionsOf(MapBuilder::NOURRITURE));
+        $this->flowers = $this->foodLeft();
+    }
+
+    /**
+     * Food across every level: a cat eating a mushroom underground is still a
+     * cat eating.
+     */
+    private function foodLeft(): int
+    {
+        $total = 0;
+
+        foreach ($this->world->getLevels() as $level) {
+            $total += count($level->positionsOf(MapBuilder::NOURRITURE));
+        }
+
+        return $total;
     }
 
     private function createWorld(): World
@@ -672,6 +703,13 @@ class GameRunner
             $this->mapProvider(self::WORLD_HEIGHT, self::WORLD_WIDTH)->getMap(),
             $this->logger
         );
+
+        $under = new MapBuilder(
+            (new UndergroundMapProvider(self::WORLD_HEIGHT, self::WORLD_WIDTH, $this->seed))->getMap(),
+            $this->logger
+        );
+
+        $this->linkCaverns($map, $under);
 
         // Spread over the map rather than huddled in the first screen: with a
         // world this size, two cats a few tiles apart would compete for the
@@ -682,8 +720,74 @@ class GameRunner
                 $this->createChat($map, intdiv($map->getWidth(), 4), intdiv($map->getHeight(), 4)),
                 $this->createChat($map, intdiv($map->getWidth() * 3, 4), intdiv($map->getHeight() * 3, 4)),
             ],
-            $this->logger
+            $this->logger,
+            [World::SOUTERRAIN => $under]
         );
+    }
+
+    /**
+     * Punch a cavern wherever both levels can take one — open meadow above, a
+     * tunnel directly below. Walked on a coarse grid so the ways down are
+     * spread across the map instead of clustering wherever the noise agreed,
+     * and deterministic, so a seed still replays exactly.
+     */
+    private function linkCaverns(MapBuilder $surface, MapBuilder $under): void
+    {
+        // A coarse grid of wanted positions, then a local search around each
+        // for a spot both levels can take. Scanning the map and stopping at a
+        // quota instead put all forty caverns in the first two rows, which is
+        // the same as having none: a cat looks twenty five tiles around
+        // itself and the rest of the world had no way down at all.
+        $columns = 8;
+        $rows = intdiv(self::CAVERNS, $columns);
+        $made = 0;
+
+        for ($gy = 0; $gy < $rows; $gy++) {
+            for ($gx = 0; $gx < $columns; $gx++) {
+                $wanted = new Point(
+                    intdiv($surface->getWidth() * (2 * $gx + 1), 2 * $columns),
+                    intdiv($surface->getHeight() * (2 * $gy + 1), 2 * $rows),
+                );
+
+                if ($this->punchCavern($surface, $under, $wanted)) {
+                    $made++;
+                }
+            }
+        }
+
+        $this->logger->log(LogLevel::INFO, sprintf('[monde] %d cavernes percees', $made));
+    }
+
+    /**
+     * Look outwards from $wanted for a tile that is open meadow above and
+     * open tunnel below, and cut through it.
+     */
+    private function punchCavern(MapBuilder $surface, MapBuilder $under, Point $wanted): bool
+    {
+        for ($ring = 0; $ring <= 14; $ring++) {
+            for ($dy = -$ring; $dy <= $ring; $dy++) {
+                for ($dx = -$ring; $dx <= $ring; $dx++) {
+                    if ($ring !== max(abs($dx), abs($dy))) {
+                        continue;
+                    }
+
+                    $point = new Point($wanted->getX() + $dx, $wanted->getY() + $dy);
+
+                    if (MapBuilder::HERBE !== $surface->getItem($point)
+                        || MapBuilder::GALERIE !== $under->getItem($point)
+                    ) {
+                        continue;
+                    }
+
+                    $surface->setItem($point, MapBuilder::CAVERNE);
+                    $under->setItem($point, MapBuilder::CAVERNE);
+
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private function mapProvider(int $lines, int $columns): MapProviderInterface

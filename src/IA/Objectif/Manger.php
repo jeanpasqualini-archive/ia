@@ -93,7 +93,9 @@ class Manger implements ObjectifInterface
         // a flower walks to the edge of what it can see and looks again from
         // there — without which a limited field of view reads as a broken cat
         // rather than as a hungry one.
-        $this->route ??= $this->findFood($world) ?? $this->explore($world);
+        $this->route ??= $this->findFood($world)
+            ?? $this->goUnderground($world)
+            ?? $this->explore($world);
 
         if (null === $this->route) {
             $this->nextSearch = $world->getTimer()->getTick() + self::RETRY_EVERY;
@@ -107,7 +109,7 @@ class Manger implements ObjectifInterface
 
     private function eat(World $world): bool
     {
-        $map = $world->getMap();
+        $map = $world->mapFor($this->player);
         $destination = $this->route?->getDestination();
 
         if (null === $destination || !in_array($map->getItem($destination), MapBuilder::NOURRITURE, true)) {
@@ -179,7 +181,7 @@ class Manger implements ObjectifInterface
 
         // Routed with the cat's own price list, not the world's: a bramble
         // it has been stung by is dear to it and cheap to everyone else.
-        $steps = (new PathFinder($world->getMap(), $this->bias()))->toNearest(
+        $steps = (new PathFinder($world->mapFor($this->player), $this->bias()))->toNearest(
             $this->player->getPosition(),
             MapBuilder::NOURRITURE,
             $this->player->getVision()
@@ -213,6 +215,42 @@ class Manger implements ObjectifInterface
     }
 
     /**
+     * Nothing to eat up here, but a way down within sight.
+     *
+     * The cat has no idea what is below — it cannot see through rock. This is
+     * exploration through a hole rather than a plan, which is the only honest
+     * thing it could be, and it is what stops the caverns from being scenery:
+     * a meadow that has been picked clean is a reason to try somewhere else.
+     */
+    private function goUnderground(World $world): ?Route
+    {
+        if (!$world->hasUnderground()) {
+            return null;
+        }
+
+        $map = $world->mapFor($this->player);
+        $steps = (new PathFinder($map, $this->bias()))->toNearest(
+            $this->player->getPosition(),
+            MapBuilder::CAVERNE,
+            $this->player->getVision()
+        );
+
+        if (null === $steps || [] === $steps) {
+            return null;
+        }
+
+        $this->exploring = true;
+
+        $world->getLogger()->log(
+            LogLevel::INFO,
+            sprintf('[caverne] %s cherche une autre issue', $this->player->getIdentifiant()),
+            ['pid' => $this->player->getIdentifiant()]
+        );
+
+        return new Route($this->player, $steps);
+    }
+
+    /**
      * Walk to the edge of what can be seen, so the next look happens from
      * somewhere else.
      *
@@ -223,7 +261,7 @@ class Manger implements ObjectifInterface
      */
     private function explore(World $world): ?Route
     {
-        $map = $world->getMap();
+        $map = $world->mapFor($this->player);
         $from = $this->player->getPosition();
         $vision = $this->player->getVision();
 

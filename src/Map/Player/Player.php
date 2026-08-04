@@ -39,6 +39,13 @@ abstract class Player implements PlayerInterface
      */
     protected int $vision = 25;
 
+    /**
+     * Which level the player is standing on. A cat that walks into a cavern
+     * changes this and nothing else — its coordinates are the same on both
+     * maps, so the tunnel comes out under the hole it went in by.
+     */
+    protected string $niveau = World::SURFACE;
+
     public function __construct()
     {
         $this->identifiant = self::FOODS[self::$generatorId % count(self::FOODS)];
@@ -65,6 +72,16 @@ abstract class Player implements PlayerInterface
     public function getVision(): int
     {
         return $this->vision;
+    }
+
+    public function getNiveau(): string
+    {
+        return $this->niveau;
+    }
+
+    public function setNiveau(string $niveau): void
+    {
+        $this->niveau = $niveau;
     }
 
     public function getPosition(): Point

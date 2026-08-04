@@ -52,6 +52,11 @@ seul coup, bien plus vite qu'une griffure, en blâmant la plante et non
 l'endroit où elle poussait. Ensuite il fait le tour. Sauf s'il n'a rien d'autre
 à manger, auquel cas il la mange quand même.
 
+Sous la prairie court un réseau de galeries, qu'on rejoint par des cavernes.
+C'est le seul endroit sûr du monde : rien n'y pique, rien n'y empoisonne et le
+sol n'y cède pas. Un chat blessé va s'y terrer, s'y remet, et remonte. Il n'y
+descend pas pour manger — il n'y pousse presque rien — mais pour guérir.
+
 Au cœur des bois, la végétation se referme en fourrés. On les traverse deux
 fois moins vite qu'un sous-bois clair — et comme la vue se paie en coût de
 déplacement, un chat n'y voit presque rien : vingt cases en prairie, neuf sous

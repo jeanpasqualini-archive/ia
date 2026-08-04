@@ -127,6 +127,20 @@ A tile is two columns wide, so a one column drag is worth nothing yet; the ancho
 
 **Capture has to be given back on the way out.** Left on, the terminal keeps swallowing clicks after the game exits — the same class of damage as leaving the tty in raw mode, and `testMouseCaptureIsTakenAndGivenBack` is what stops it happening again. It also takes the terminal's own text selection with it, which is why `--no-mouse` exists: with it, copying a line out of the log needs no modifier.
 
+## Under the meadow
+
+`World` holds a map per level (`World::SURFACE`, `World::SOUTERRAIN`) and a player carries the name of the one it is on. A cavern is **one hole seen from two sides**: the same tile at the same coordinates on both maps, so going through it changes which map the cat is read against and nothing else. `World::mapFor($player)` is what everything that moves, searches or hurts a player goes through; `getMap()` still means the surface, for the things that do not care.
+
+`ApplicationIA` flips the level **only on arrival** — checked every tick instead, a cat standing on a cavern flips back and forth for as long as it stays there. The view follows the selected cat down and back up, and only players on the level being looked at are drawn.
+
+**The reason to descend was the hard part, and the first two attempts could not fire at all.** Descending "when there is nothing left to eat up here" never happened: a cat sees twenty five tiles in every direction — some two thousand of them — and the meadow carries food on four percent of its surface. Measured over four thousand ticks, a cat was hungry for a hundred and seventy six of them and *never once* had nothing in sight. The same arithmetic sank the mirror rule for coming back up: cats went down once and stayed for three quarters of the run, even with the mushrooms thinned to a fifth. **"Nothing in sight" is not a usable trigger in this world**, and anything built on it is scenery.
+
+Being hurt does happen. `SeMettreAlAbri` is the second drive and the reason the caverns exist: below there are no brambles, no pits and no foxgloves, so shelter is not an errand but the one safe place there is. It outranks hunger — the first arbitration in this world — and it is the *goal* that walks the cat back out once mended, rather than hunger being left to find the way. Two details it needs: the goal is only taken if a way down is actually in sight, or a cat that cannot reach one keeps it for ever and stops eating; and the cat rests **beside** the entrance rather than on it, because `toNearest` excludes the tile one is standing on and the next cavern is thirty tiles away, out of sight.
+
+Caverns are punched on a coarse grid of wanted positions with a local search around each. Scanning the map and stopping at a quota put all forty in the first two rows, which is the same as having none.
+
+Measured after all that: eight descents and eight returns over twelve thousand ticks, a cat spending about fifteen percent of its life underground.
+
 ## Memory and exit 137
 
 Two ceilings can stop the game and they fail differently. PHP's `memory_limit` raises a catchable fatal error; the container cgroup limit makes the kernel SIGKILL the process, which is the **exit 137 with no stack trace and nothing in the log**. `Runtime\MemoryUsage` reads both (cgroup v2 then v1, `null` when uncapped) plus the peak, and `FlashMemory::bytes()` reports the snapshot ring — by far the biggest thing this program holds.
@@ -209,7 +223,7 @@ Serialization is the sharp edge of this codebase. Anything added to `World` or a
 
 ## Tests
 
-`make test` — 161 tests covering map queries and bounds, cat behaviour end-to-end (walks, eats, turns the flower to grass), snapshot round-trips, headless frame rendering, and the audio (oscillators, mixing, loop length, the feeding of the device against a fake output). The SDL test skips itself when the library is absent, which is the normal outcome in the container. `tests/WorldFactory.php` builds worlds from ASCII rows so nothing depends on the random provider.
+`make test` — 166 tests covering map queries and bounds, cat behaviour end-to-end (walks, eats, turns the flower to grass), snapshot round-trips, headless frame rendering, and the audio (oscillators, mixing, loop length, the feeding of the device against a fake output). The SDL test skips itself when the library is absent, which is the normal outcome in the container. `tests/WorldFactory.php` builds worlds from ASCII rows so nothing depends on the random provider.
 
 `phpunit.xml.dist` fails on warnings, notices and deprecations, but `ignoreIndirectDeprecations` keeps vendor deprecations from failing the suite.
 

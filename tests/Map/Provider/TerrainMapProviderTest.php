@@ -21,16 +21,27 @@ final class TerrainMapProviderTest extends TestCase
         }
     }
 
+    /**
+     * A subset rather than an equality: the underground has tiles of its own —
+     * rock, gallery, mushroom — that the surface has no business producing.
+     */
     public function testOnlyKnownTilesAreProduced(): void
     {
         $map = (new TerrainMapProvider(20, 60, 1))->getMap();
         $used = array_unique(str_split(implode('', $map)));
 
-        sort($used);
-        $allowed = MapBuilder::getAllowedItems();
-        sort($allowed);
+        foreach ($used as $tile) {
+            self::assertContains($tile, MapBuilder::getAllowedItems(), sprintf('tuile %s inconnue', $tile));
+        }
 
-        self::assertSame($allowed, $used);
+        // Everything the surface is made of has to actually turn up, or a
+        // terrain could quietly stop being generated at all.
+        foreach ([
+            MapBuilder::HERBE, MapBuilder::EAU, MapBuilder::ARBRE, MapBuilder::FOURRE,
+            MapBuilder::FLEUR, MapBuilder::DIGITALE, MapBuilder::RONCE, MapBuilder::TROU,
+        ] as $tile) {
+            self::assertContains($tile, $used, sprintf('tuile %s jamais produite', $tile));
+        }
     }
 
     public function testTheSameSeedAlwaysGivesTheSameMap(): void

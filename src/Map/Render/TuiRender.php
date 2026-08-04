@@ -14,6 +14,7 @@ use Map\Player\Chat\Peur;
 use Map\Player\PlayerHasEstomac;
 use Map\Player\PlayerHasPeur;
 use Map\Player\PlayerInterface;
+use Map\World\World;
 use Map\World\WorldContainer;
 use Memory\MemoryManager;
 use PhpTui\Term\Actions;
@@ -231,10 +232,15 @@ class TuiRender implements MapRenderInterface
      * On the renderer because it is what knows which tab is selected, and it
      * already holds the camera.
      */
+    /** The cat the panel is describing, which is also the one the view follows. */
+    public function selectedPlayer(): ?PlayerInterface
+    {
+        return array_values($this->players())[$this->activeTab] ?? null;
+    }
+
     public function focusOnSelectedPlayer(): bool
     {
-        $players = array_values($this->players());
-        $player = $players[$this->activeTab] ?? null;
+        $player = $this->selectedPlayer();
 
         if (null === $player) {
             return false;
@@ -730,7 +736,8 @@ class TuiRender implements MapRenderInterface
     private function mapTitle(array $map): string
     {
         return sprintf(
-            'Carte %s  %d;%d de %dx%d  (fleches, z/Z)',
+            '%s %s  %d;%d de %dx%d  (fleches, z/Z)',
+            World::SOUTERRAIN === $this->selectedPlayer()?->getNiveau() ? 'Souterrain' : 'Carte',
             $this->camera->label(),
             $this->camera->y(),
             $this->camera->x(),
@@ -756,8 +763,7 @@ class TuiRender implements MapRenderInterface
     private function sightEdge(int $scale): array
     {
         $world = $this->worldContainer->getWorld();
-        $players = array_values($this->players());
-        $player = $players[$this->activeTab] ?? null;
+        $player = $this->selectedPlayer();
 
         if (null === $world || null === $player) {
             return [];
@@ -768,7 +774,7 @@ class TuiRender implements MapRenderInterface
         $band = $scale * PathFinder::budgetFor(1);
         $edge = [];
 
-        foreach ((new PathFinder($world->getMap()))->costsWithin($player->getPosition(), $range) as $index => $cost) {
+        foreach ((new PathFinder($world->mapFor($player)))->costsWithin($player->getPosition(), $range) as $index => $cost) {
             if ($cost > $budget - $band) {
                 $edge[$index] = true;
             }
@@ -787,8 +793,15 @@ class TuiRender implements MapRenderInterface
     private function visiblePlayers(int $originX, int $originY, int $scale, array $view): array
     {
         $placed = [];
+        $level = $this->selectedPlayer()?->getNiveau();
 
         foreach (array_values($this->players()) as $index => $player) {
+            // Only what is on the level being looked at. A cat underground is
+            // not standing on the meadow above it.
+            if (null !== $level && $player->getNiveau() !== $level) {
+                continue;
+            }
+
             $x = $player->getPosition()->getX();
             $y = $player->getPosition()->getY();
 

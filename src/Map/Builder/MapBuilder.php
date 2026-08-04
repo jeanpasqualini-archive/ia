@@ -51,12 +51,28 @@ class MapBuilder
     public const FOURRE = 'U';
 
     /**
-     * What a cat will walk to when hungry. Both look like a meal; only one
-     * is.
+     * A way between the levels. The same tile on both maps at the same
+     * coordinates: going through it changes which map the cat is read
+     * against and nothing else.
+     */
+    public const CAVERNE = 'C';
+
+    /** Underground: the rock a tunnel was not cut through. */
+    public const ROCHE = 'K';
+
+    /** Underground: the floor of a tunnel. */
+    public const GALERIE = 'G';
+
+    /** Underground: what grows down there, and it is edible. */
+    public const CHAMPIGNON = 'M';
+
+    /**
+     * What a cat will walk to when hungry. Two of them look like a meal on
+     * the surface and only one is; the third only grows underground.
      *
      * @var list<string>
      */
-    public const NOURRITURE = [self::FLEUR, self::DIGITALE];
+    public const NOURRITURE = [self::FLEUR, self::DIGITALE, self::CHAMPIGNON];
 
     public const LAYER_MAP = 'map';
     public const LAYER_PLAYER = 'player';
@@ -65,6 +81,7 @@ class MapBuilder
     private const ALLOWED_ITEMS = [
         self::HERBE, self::ARBRE, self::EAU, self::FLEUR,
         self::RONCE, self::DIGITALE, self::TROU, self::FOURRE,
+        self::CAVERNE, self::ROCHE, self::GALERIE, self::CHAMPIGNON,
     ];
 
     /**
@@ -75,6 +92,7 @@ class MapBuilder
     private const EATING = [
         self::FLEUR => [10, 0],
         self::DIGITALE => [0, 3],
+        self::CHAMPIGNON => [10, 0],
     ];
 
     /**
@@ -106,6 +124,10 @@ class MapBuilder
         self::DIGITALE => 1,
         self::ARBRE => 3,
         self::FOURRE => 6,
+        self::CAVERNE => 1,
+        self::GALERIE => 1,
+        self::CHAMPIGNON => 1,
+        self::ROCHE => null,
         // One, like grass, and for the same reason brambles are one: this was
         // three at first — climbing out ought to cost something — and the
         // pathfinder then routed round every pit from birth. Six thousand

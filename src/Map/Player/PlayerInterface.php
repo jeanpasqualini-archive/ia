@@ -24,6 +24,11 @@ interface PlayerInterface
      */
     public function hurt(int $amount): int;
 
+    /** Which level of the world this player is standing on. */
+    public function getNiveau(): string;
+
+    public function setNiveau(string $niveau): void;
+
     public function getIa(): IAInterface;
 
     public function update(World $world): void;

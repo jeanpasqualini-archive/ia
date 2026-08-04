@@ -60,6 +60,9 @@ class Chat extends Player implements PlayerHasEstomac, PlayerHasPeur
      */
     public function __sleep(): array
     {
-        return ['position', 'ia', 'estomac', 'peur', 'identifiant', 'life', 'resistance', 'puissance'];
+        return [
+            'position', 'ia', 'estomac', 'peur', 'identifiant',
+            'life', 'resistance', 'puissance', 'niveau',
+        ];
     }
 }

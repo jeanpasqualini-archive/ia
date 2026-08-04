@@ -21,14 +21,27 @@ class World
 
     private EventDispatcher $eventDispatcher;
 
+    public const SURFACE = 'surface';
+    public const SOUTERRAIN = 'souterrain';
+
+    /**
+     * One map per level, keyed by name.
+     *
+     * @var array<string, MapBuilder>
+     */
+    private array $levels;
+
     /**
      * @param list<PlayerInterface> $players
+     * @param array<string, MapBuilder> $levels the surface, plus whatever lies under it
      */
     public function __construct(
         private MapBuilder $map,
         private array $players = [],
         private LoggerInterface $logger = new MultipleLogger(),
+        array $levels = [],
     ) {
+        $this->levels = [self::SURFACE => $map] + $levels;
         $this->worldIA = new ApplicationIA();
         $this->timer = new Timer();
         $this->eventDispatcher = new EventDispatcher();
@@ -71,9 +84,44 @@ class World
         return $this->timer;
     }
 
+    /**
+     * The surface, which is what anything that does not care about levels
+     * means by "the map".
+     */
     public function getMap(): MapBuilder
     {
         return $this->map;
+    }
+
+    /**
+     * The map a player is standing on. Everything that moves, searches or
+     * hurts a player goes through this rather than through getMap().
+     */
+    public function mapFor(PlayerInterface $player): MapBuilder
+    {
+        return $this->levels[$player->getNiveau()] ?? $this->map;
+    }
+
+    public function levelNamed(string $name): ?MapBuilder
+    {
+        return $this->levels[$name] ?? null;
+    }
+
+    /**
+     * @return array<string, MapBuilder>
+     */
+    public function getLevels(): array
+    {
+        return $this->levels;
+    }
+
+    /**
+     * Whether a level exists to go down to. A world may perfectly well be all
+     * surface — every test builds one.
+     */
+    public function hasUnderground(): bool
+    {
+        return isset($this->levels[self::SOUTERRAIN]);
     }
 
     /**
@@ -93,7 +141,7 @@ class World
      */
     public function __sleep(): array
     {
-        return ['map', 'players', 'worldIA', 'timer'];
+        return ['map', 'levels', 'players', 'worldIA', 'timer'];
     }
 
     public function __wakeup(): void

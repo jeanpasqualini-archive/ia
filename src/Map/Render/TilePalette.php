@@ -55,6 +55,11 @@ class TilePalette
         // Nearly black: a hole is an absence, and it should read as one next
         // to ground that is merely dark.
         MapBuilder::TROU => ['#17120f', '#1d1713', '#120e0c', '#1a1511'],
+        // Underground. Rock is the wall one cannot pass, the gallery is the
+        // floor one walks on, and the cavern mouth is lit from the other side.
+        MapBuilder::ROCHE => ['#2b2724', '#231f1d', '#332e2a', '#282320'],
+        MapBuilder::GALERIE => ['#4a423a', '#544b42', '#443c35', '#4f463e'],
+        MapBuilder::CAVERNE => ['#6e5a33', '#7a6439', '#63512e', '#755f36'],
     ];
 
     /** Flowers are not all the same colour, which is half of why meadows read well. */
@@ -135,7 +140,10 @@ class TilePalette
             // saw it: Unicode says narrow, the font substitution says
             // otherwise. A canopy is better read as a dark mass anyway.
             MapBuilder::HERBE, MapBuilder::EAU, MapBuilder::ARBRE,
-            MapBuilder::TROU, MapBuilder::FOURRE => ' ',
+            MapBuilder::TROU, MapBuilder::FOURRE,
+            MapBuilder::ROCHE, MapBuilder::GALERIE => ' ',
+            MapBuilder::CAVERNE => 'o',
+            MapBuilder::CHAMPIGNON => '¤',
             MapBuilder::FLEUR => '✿',
             MapBuilder::DIGITALE => '❀',
             MapBuilder::RONCE => '×',
@@ -224,8 +232,15 @@ class TilePalette
             // Nothing is drawn on top of these, so they carry a background
             // and no foreground at all.
             MapBuilder::HERBE, MapBuilder::EAU, MapBuilder::ARBRE,
-            MapBuilder::TROU, MapBuilder::FOURRE => Style::default()
+            MapBuilder::TROU, MapBuilder::FOURRE,
+            MapBuilder::ROCHE, MapBuilder::GALERIE => Style::default()
                 ->bg($this->shade($tile, $variant)),
+            MapBuilder::CAVERNE => Style::default()
+                ->bg($this->shade(MapBuilder::CAVERNE, $variant))
+                ->fg(RgbColor::fromHex('#1a1512')),
+            MapBuilder::CHAMPIGNON => Style::default()
+                ->bg($this->shade(MapBuilder::GALERIE, $variant))
+                ->fg(RgbColor::fromHex('#e8d9b0')),
             MapBuilder::DIGITALE => Style::default()
                 ->bg($this->shade(MapBuilder::HERBE, $variant))
                 ->fg(RgbColor::fromHex(self::POISON)),
@@ -265,6 +280,10 @@ class TilePalette
             MapBuilder::EAU => Style::default()->bg(AnsiColor::Blue)->fg(AnsiColor::Blue),
             MapBuilder::TROU => Style::default()->bg(AnsiColor::Black)->fg(AnsiColor::Black),
             MapBuilder::FOURRE => Style::default()->bg(AnsiColor::DarkGray)->fg(AnsiColor::DarkGray),
+            MapBuilder::ROCHE => Style::default()->bg(AnsiColor::DarkGray)->fg(AnsiColor::DarkGray),
+            MapBuilder::GALERIE => Style::default()->bg(AnsiColor::Gray)->fg(AnsiColor::Gray),
+            MapBuilder::CAVERNE => Style::default()->bg(AnsiColor::Yellow)->fg(AnsiColor::Black),
+            MapBuilder::CHAMPIGNON => Style::default()->bg(AnsiColor::Gray)->fg(AnsiColor::White),
             MapBuilder::RONCE => Style::default()->bg(AnsiColor::LightGreen)->fg(AnsiColor::Black),
             MapBuilder::FLEUR => Style::default()->bg(AnsiColor::LightGreen)->fg(AnsiColor::Magenta),
             MapBuilder::DIGITALE => Style::default()->bg(AnsiColor::LightGreen)->fg(AnsiColor::LightCyan),
