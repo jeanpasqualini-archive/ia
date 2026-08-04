@@ -106,7 +106,36 @@ class PathFinder
      */
     private function budget(?int $range): ?int
     {
-        return null === $range ? null : $range * self::STRAIGHT;
+        return null === $range ? null : self::budgetFor($range);
+    }
+
+    /**
+     * The cost a range of tiles is worth, for anyone who needs to reason about
+     * the same ceiling — drawing the edge of what a cat can see, for one.
+     */
+    public static function budgetFor(int $range): int
+    {
+        return $range * self::STRAIGHT;
+    }
+
+    /**
+     * What a searcher standing at $from can actually reach, as tile index to
+     * accumulated cost.
+     *
+     * This is the flood with nothing to find: it stops at the budget and
+     * returns everything it touched. The shape is never a circle — undergrowth
+     * costs three times what grass does and water is not crossed at all — so
+     * it is also the only honest way to draw a field of view.
+     *
+     * @return array<int, int>
+     */
+    public function costsWithin(Point $from, int $range): array
+    {
+        if (0 === $this->width) {
+            return [];
+        }
+
+        return $this->flood($from, [], $this->budget($range))['best'];
     }
 
     /**
@@ -120,6 +149,31 @@ class PathFinder
             return null;
         }
 
+        $flood = $this->flood($from, $goals, $budget);
+
+        if (null === $flood['reached']) {
+            return null;
+        }
+
+        return $this->rebuild(
+            $flood['cameFrom'],
+            $flood['reached'],
+            $this->index($from->getX(), $from->getY())
+        );
+    }
+
+    /**
+     * Expand outwards by cost until a goal is met or the budget runs out.
+     *
+     * Shared by the routing and by the field of view, which are the same
+     * flood asked two different questions.
+     *
+     * @param array<int, true> $goals
+     *
+     * @return array{best: array<int, int>, cameFrom: array<int, int>, reached: int|null}
+     */
+    private function flood(Point $from, array $goals, ?int $budget): array
+    {
         $start = $this->index($from->getX(), $from->getY());
         $best = [$start => 0];
         $cameFrom = [];
@@ -131,7 +185,7 @@ class PathFinder
             $current = $queue->extract();
 
             if (isset($goals[$current])) {
-                return $this->rebuild($cameFrom, $current, $start);
+                return ['best' => $best, 'cameFrom' => $cameFrom, 'reached' => $current];
             }
 
             $x = $current % $this->width;
@@ -178,7 +232,7 @@ class PathFinder
             }
         }
 
-        return null;
+        return ['best' => $best, 'cameFrom' => $cameFrom, 'reached' => null];
     }
 
     /**

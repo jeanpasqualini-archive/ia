@@ -317,6 +317,7 @@ class GameRunner
             'm' => $this->toggleMute(),
             'z' => $this->zoom(closer: true),
             'Z' => $this->zoom(closer: false),
+            'c' => $this->focusPlayer(),
             InputControllerInterface::UP => $this->look(0, -1),
             InputControllerInterface::DOWN => $this->look(0, 1),
             InputControllerInterface::LEFT => $this->look(-1, 0),
@@ -345,6 +346,12 @@ class GameRunner
             $this->anchor = null;
 
             return false;
+        }
+
+        if (MouseAction::Press === $mouse->action
+            && $this->render->isOverFocusButton($mouse->column, $mouse->row)
+        ) {
+            return $this->focusPlayer();
         }
 
         if (!$this->render->isOverMap($mouse->column, $mouse->row)) {
@@ -441,6 +448,21 @@ class GameRunner
     private function look(int $dx, int $dy): bool
     {
         $this->camera->pan($dx, $dy);
+
+        return true;
+    }
+
+    /**
+     * Bring the cat shown in the AI panel back into view. With a world eight
+     * screens across, losing one is a matter of a few seconds at speed.
+     */
+    private function focusPlayer(): bool
+    {
+        if (!$this->render->focusOnSelectedPlayer()) {
+            return false;
+        }
+
+        $this->audio->play(SoundEffect::Blip);
 
         return true;
     }

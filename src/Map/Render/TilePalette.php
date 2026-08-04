@@ -55,6 +55,15 @@ class TilePalette
     private const BLOOMS = ['#e8619d', '#f2d13c', '#e05c5c', '#d98cf0'];
 
     /**
+     * The far edge of what a cat can see.
+     *
+     * One flat colour whatever is underneath, because it is an overlay and
+     * not a terrain: it has to read as a line drawn over the ground rather
+     * than as another kind of ground.
+     */
+    private const SIGHT_EDGE = '#b39a4d';
+
+    /**
      * One glyph and one colour per player.
      *
      * Single column characters on purpose: an emoji is two columns wide, so on
@@ -133,14 +142,17 @@ class TilePalette
     /**
      * The tile as it is drawn: always exactly TILE_WIDTH columns.
      */
-    public function cell(string $tile, int $x, int $y): Span
+    public function cell(string $tile, int $x, int $y, bool $edgeOfSight = false): Span
     {
-        $style = $this->style($tile, $x, $y);
         $index = self::playerIndex($tile);
 
+        // A cat standing on the boundary keeps its own colours. The edge is
+        // drawn to say where sight ends, not to hide what is there.
         if (null !== $index) {
-            return Span::styled(self::playerMarker($index) . ' ', $style);
+            return Span::styled(self::playerMarker($index) . ' ', $this->style($tile, $x, $y));
         }
+
+        $style = $edgeOfSight ? $this->sightEdgeStyle() : $this->style($tile, $x, $y);
 
         $glyph = $this->glyph($tile);
 
@@ -155,6 +167,19 @@ class TilePalette
             0 === $this->variant($x, $y) % 2 ? $glyph . ' ' : ' ' . $glyph,
             $style
         );
+    }
+
+    /**
+     * Unlike the terrain, this has no shades: it is a boundary, and a
+     * boundary that shimmered would be harder to follow, not prettier. The
+     * sixteen colour fallback gets yellow, which is the one thing it can say
+     * here that no terrain already says.
+     */
+    private function sightEdgeStyle(): Style
+    {
+        return $this->cache['sight'] ??= $this->trueColor
+            ? Style::default()->bg(RgbColor::fromHex(self::SIGHT_EDGE))
+            : Style::default()->bg(AnsiColor::Yellow)->fg(AnsiColor::Yellow);
     }
 
     public function style(string $tile, int $x, int $y): Style

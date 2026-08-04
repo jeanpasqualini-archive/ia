@@ -330,6 +330,61 @@ final class TuiRenderTest extends TestCase
     }
 
     /**
+     * The clickable area is computed from where the button was drawn, and
+     * this is what says the two agree. Worked out twice, independently, is
+     * how a button ends up one row away from itself.
+     */
+    public function testTheFocusButtonIsWhereItSaysItIs(): void
+    {
+        $container = new WorldContainer();
+        $container->setWorld(WorldFactory::fromRows(['XXX']));
+        $render = $this->render(container: $container);
+
+        $render->render([['X', 'X', 'X']]);
+
+        $drawn = null;
+
+        foreach (explode("\n", $this->backend->toString()) as $index => $row) {
+            if (str_contains($row, 'centrer la vue')) {
+                $drawn = $index;
+
+                break;
+            }
+        }
+
+        self::assertNotNull($drawn, 'le bouton est dessine');
+        self::assertTrue($render->isOverFocusButton(80, $drawn), 'le clic tombe dessus');
+        self::assertFalse($render->isOverFocusButton(80, $drawn + 1), 'une ligne plus bas, non');
+        self::assertFalse($render->isOverFocusButton(10, $drawn), 'et pas sur la carte');
+    }
+
+    /**
+     * With a world eight screens across, losing a cat takes a few seconds at
+     * speed. Centring is how it is found again.
+     */
+    public function testCentringBringsTheCatBackIntoView(): void
+    {
+        $container = new WorldContainer();
+        $container->setWorld(WorldFactory::fromRows(['XX'], chatX: 200, chatY: 120));
+
+        $camera = new Camera();
+        $render = $this->render(container: $container, camera: $camera);
+        $map = $this->emptyMap(256, 160);
+
+        $render->render($map);
+        $lost = substr_count($this->backend->toString(), '●');
+
+        $render->focusOnSelectedPlayer();
+        $render->render($map);
+
+        self::assertSame(
+            $lost + 1,
+            substr_count($this->backend->toString(), '●'),
+            'le chat est revenu dans le champ'
+        );
+    }
+
+    /**
      * Capture has to be given back. Left on, the terminal keeps swallowing
      * clicks after the game has exited and the shell becomes unusable — the
      * same class of damage as leaving the tty in raw mode.

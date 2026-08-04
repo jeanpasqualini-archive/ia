@@ -9,6 +9,7 @@ use IA\CatIA;
 use Logger\BufferLogger;
 use Logger\MultipleLogger;
 use Map\Builder\MapBuilder;
+use Map\Path\PathFinder;
 use Map\Player\PlayerHasEstomac;
 use Map\Player\PlayerInterface;
 use Map\World\WorldContainer;
@@ -62,6 +63,13 @@ class TuiRender implements MapRenderInterface
 
     /** Index of the AI tab currently shown in the sidebar. */
     private int $activeTab = 0;
+
+    /**
+     * Screen row of the "centre the view" button, recorded while the panel is
+     * built rather than worked out afterwards. Computing it from the layout a
+     * second time is how a button ends up one row away from where it is drawn.
+     */
+    private ?int $focusRow = null;
 
     public function __construct(
         private Terminal $terminal,
@@ -194,6 +202,45 @@ class TuiRender implements MapRenderInterface
     public function toCells(int $columns, int $rows): array
     {
         return [intdiv($columns, TilePalette::TILE_WIDTH), $rows];
+    }
+
+    /**
+     * Whether a screen position falls on the "centre the view" button of the
+     * AI panel.
+     *
+     * Null until a frame has been drawn: the row is recorded while the panel
+     * is built, because the panel is what decides where the button goes.
+     */
+    public function isOverFocusButton(int $column, int $row): bool
+    {
+        $size = $this->terminal->info(Size::class);
+        $cols = $size instanceof Size ? $size->cols : 80;
+        $left = $cols - self::SIDEBAR_WIDTH;
+
+        return null !== $this->focusRow
+            && $row === $this->focusRow
+            && $column > $left
+            && $column < $cols - 1;
+    }
+
+    /**
+     * Bring the cat shown in the panel into the middle of the view.
+     *
+     * On the renderer because it is what knows which tab is selected, and it
+     * already holds the camera.
+     */
+    public function focusOnSelectedPlayer(): bool
+    {
+        $players = array_values($this->players());
+        $player = $players[$this->activeTab] ?? null;
+
+        if (null === $player) {
+            return false;
+        }
+
+        $this->camera->centreOn($player->getPosition()->getX(), $player->getPosition()->getY());
+
+        return true;
     }
 
     public function render($map): void
@@ -389,6 +436,18 @@ class TuiRender implements MapRenderInterface
             );
         }
 
+        $lines[] = Line::fromString('');
+
+        // Two rows down for the block border and the row of tabs above this
+        // paragraph. Recorded here, where the line is actually placed.
+        $this->focusRow = 2 + count($lines);
+        $lines[] = Line::fromSpans(
+            Span::styled(
+                ' [ c : centrer la vue ] ',
+                Style::default()->fg(AnsiColor::Black)->bg(AnsiColor::Cyan)
+            )
+        );
+
         return ParagraphWidget::fromText(Text::fromLines(...$lines));
     }
 
@@ -573,6 +632,7 @@ class TuiRender implements MapRenderInterface
         $originX = $this->camera->x();
         $originY = $this->camera->y();
         $players = $this->visiblePlayers($originX, $originY, $scale, $view);
+        $sightEdge = $this->sightEdge($scale);
 
         $lines = [];
 
@@ -593,7 +653,12 @@ class TuiRender implements MapRenderInterface
                 }
 
                 $tile = $players[$row][$column] ?? $map[$worldY][$worldX] ?? MapBuilder::HERBE;
-                $spans[] = $this->palette->cell($tile, $worldX, $worldY);
+                $spans[] = $this->palette->cell(
+                    $tile,
+                    $worldX,
+                    $worldY,
+                    isset($sightEdge[$worldY * $width + $worldX])
+                );
             }
 
             $lines[] = Line::fromSpans(...$spans);
@@ -619,6 +684,44 @@ class TuiRender implements MapRenderInterface
             count($map[0] ?? []),
             count($map),
         );
+    }
+
+    /**
+     * The far edge of what the selected cat can see, as world tile indices.
+     *
+     * Drawn from the real flood rather than as a circle, because sight is
+     * spent in cost: it stops short in undergrowth, is cut off by a lake, and
+     * a circle would claim the cat sees across water. Roughly a millisecond
+     * for one cat, against a frame budget of sixty six.
+     *
+     * The band is one cell thick *at the current zoom* rather than one tile.
+     * A one tile ring would be sampled away at 1:2 and never seen again,
+     * which is exactly when the whole field of view starts fitting on screen.
+     *
+     * @return array<int, true>
+     */
+    private function sightEdge(int $scale): array
+    {
+        $world = $this->worldContainer->getWorld();
+        $players = array_values($this->players());
+        $player = $players[$this->activeTab] ?? null;
+
+        if (null === $world || null === $player) {
+            return [];
+        }
+
+        $range = $player->getVision();
+        $budget = PathFinder::budgetFor($range);
+        $band = $scale * PathFinder::budgetFor(1);
+        $edge = [];
+
+        foreach ((new PathFinder($world->getMap()))->costsWithin($player->getPosition(), $range) as $index => $cost) {
+            if ($cost > $budget - $band) {
+                $edge[$index] = true;
+            }
+        }
+
+        return $edge;
     }
 
     /**

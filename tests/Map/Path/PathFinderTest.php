@@ -189,6 +189,44 @@ final class PathFinderTest extends TestCase
         self::assertNotNull($wood->toNearest($from, MapBuilder::FLEUR, 14), 'assez de budget pour traverser');
     }
 
+    /**
+     * What a cat can see is never a circle, which is exactly why the field of
+     * view is drawn from this rather than from a radius: a lake cuts it off,
+     * and the far side stays hidden however close it is as the crow flies.
+     */
+    public function testSightIsCutOffByWaterRatherThanByDistance(): void
+    {
+        $finder = $this->finder([
+            'XXEXX',
+            'XXEXX',
+            'XXEXX',
+        ]);
+
+        $seen = $finder->costsWithin(new Point(0, 1), 10);
+
+        self::assertArrayHasKey(5 + 1, $seen, 'la case voisine, a droite');
+        self::assertArrayNotHasKey(5 + 2, $seen, "l'eau elle meme n'est jamais atteinte");
+        self::assertArrayNotHasKey(5 + 3, $seen, "ni l'autre rive, pourtant a trois cases");
+    }
+
+    public function testUndergrowthEatsTheSightBudgetThreeTimesFaster(): void
+    {
+        $meadow = $this->finder(['XXXXXX'])->costsWithin(new Point(0, 0), 3);
+        $wood = $this->finder(['XYYYYY'])->costsWithin(new Point(0, 0), 3);
+
+        self::assertArrayHasKey(3, $meadow, 'trois cases de prairie');
+        self::assertArrayNotHasKey(3, $wood, 'trois cases de sous-bois coutent le triple');
+        self::assertArrayHasKey(1, $wood, 'la premiere reste a portee');
+    }
+
+    public function testNothingBeyondTheBudgetIsReported(): void
+    {
+        $seen = $this->finder(['XXXXXXXXXX'])->costsWithin(new Point(0, 0), 4);
+
+        self::assertArrayHasKey(4, $seen);
+        self::assertArrayNotHasKey(5, $seen);
+    }
+
     public function testTheRangeBoundsAPlainRouteToo(): void
     {
         $finder = $this->finder(['XXXXXXXXXX']);

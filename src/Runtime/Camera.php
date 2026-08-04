@@ -107,6 +107,19 @@ final class Camera
     }
 
     /**
+     * Put a tile in the middle of the view.
+     *
+     * The clamp on the next frame is what keeps this honest near an edge: a
+     * cat in the top left corner cannot be centred, and the view stops at the
+     * corner rather than showing nothing.
+     */
+    public function centreOn(int $tileX, int $tileY): void
+    {
+        $this->x = $tileX - intdiv($this->cellsX * $this->scale(), 2);
+        $this->y = $tileY - intdiv($this->cellsY * $this->scale(), 2);
+    }
+
+    /**
      * Follow a cursor that has moved by so many cells.
      *
      * The sign is the whole point and the easiest thing to get backwards:
