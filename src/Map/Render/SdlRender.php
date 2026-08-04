@@ -54,6 +54,12 @@ final class SdlRender implements GameRenderInterface
     private const LOG_HEIGHT = 148;
     private const BAR_HEIGHT = 44;
 
+    /**
+     * Tiles per pixel of the overview. Two, so a 256x160 world comes to 128x80
+     * — small enough to sit in the panel, big enough that a lake is a lake.
+     */
+    private const OVERVIEW_STEP = 2;
+
     private const TEXT = 2;
     private const LINE = 9 * self::TEXT;
 
@@ -134,6 +140,21 @@ final class SdlRender implements GameRenderInterface
      * and anything `World` can reach is serialized into every snapshot.
      */
     private ?Relief $relief = null;
+
+    /**
+     * The overview's box in cells, recorded while it is drawn.
+     *
+     * @var array{int, int, int, int}|null
+     */
+    private ?array $overview = null;
+
+    /** @var array<int, array<int, string>> */
+    private array $lastMap = [];
+
+    /** The map last drawn, kept so a click on the overview knows its size. */
+    private int $worldWidth = 0;
+
+    private int $worldHeight = 0;
 
     public function __construct(
         private MultipleLogger $logger,
@@ -319,6 +340,10 @@ final class SdlRender implements GameRenderInterface
      */
     public function compose(array $map): array
     {
+        $this->worldHeight = count($map);
+        $this->worldWidth = count($map[0] ?? []);
+        $this->lastMap = $map;
+
         return [
             $this->isometric ? $this->paintIso($map) : $this->paintMap($map),
             $this->paintSidebar(),
@@ -647,6 +672,8 @@ final class SdlRender implements GameRenderInterface
             intdiv($buttonTop + self::LINE + 6, self::CELL),
         ];
 
+        $this->drawOverview($pixels);
+
         // The memory panel sits at the bottom, where it does not push the AI
         // about as the cat's goals come and go.
         $y = $this->mapHeight - 12 - self::LINE * count($this->dashboard->memory());
@@ -657,6 +684,106 @@ final class SdlRender implements GameRenderInterface
         }
 
         return $pixels;
+    }
+
+    /**
+     * The whole world, small, with the view drawn on it.
+     *
+     * **It lives in the panel and not over the map**, because the panel is at
+     * true pixel size while the isometric view is composed at half and blown
+     * up: an overview drawn there would come out as soft as the ground it is
+     * meant to help you leave. It is also the one thing the isometric view
+     * cannot give at all — that one is always 1:1 and shows a few thousand
+     * tiles out of forty thousand, so *where am I* stops being answerable
+     * from the picture itself.
+     *
+     * Sampled every other tile: forty thousand writes a frame to say something
+     * a quarter of that says just as well, and terrain is contiguous enough
+     * that one tile speaks for its neighbour — the same trade the map view
+     * makes when it is zoomed out.
+     */
+    private function drawOverview(Pixels $pixels): void
+    {
+        if ([] === $this->lastMap) {
+            $this->overview = null;
+
+            return;
+        }
+
+        $width = intdiv($this->worldWidth, self::OVERVIEW_STEP);
+        $height = intdiv($this->worldHeight, self::OVERVIEW_STEP);
+        $left = intdiv(self::SIDEBAR - $width, 2);
+        $top = $this->mapHeight - 24 - self::LINE * count($this->dashboard->memory()) - $height - 16;
+
+        $pixels->frame($left - 2, $top - 2, $width + 4, $height + 4, self::BORDER);
+
+        for ($y = 0; $y < $height; $y++) {
+            $worldY = $y * self::OVERVIEW_STEP;
+
+            for ($x = 0; $x < $width; $x++) {
+                $worldX = $x * self::OVERVIEW_STEP;
+                $tile = $this->lastMap[$worldY][$worldX] ?? MapBuilder::HERBE;
+                $pixels->set($left + $x, $top + $y, Pixels::pack($this->palette->pixel($tile, $worldX, $worldY)));
+            }
+        }
+
+        // Where the view is. Drawn as an outline rather than a tint, because a
+        // tint over a map this small hides the very thing one is aiming at.
+        $view = $this->getSize();
+        $pixels->frame(
+            $left + intdiv($this->camera->x(), self::OVERVIEW_STEP),
+            $top + intdiv($this->camera->y(), self::OVERVIEW_STEP),
+            max(3, intdiv($view['x'] * $this->camera->scale(), self::OVERVIEW_STEP)),
+            max(3, intdiv($view['y'] * $this->camera->scale(), self::OVERVIEW_STEP)),
+            0xFFF2E8C0
+        );
+
+        // The cats, drawn last and two pixels across: one pixel of a cat on a
+        // map of forty thousand tiles is not something anyone can aim at.
+        foreach (array_values($this->players()) as $index => $player) {
+            $colours = $this->palette->catColours($index);
+            $pixels->rect(
+                $left + intdiv($player->getPosition()->getX(), self::OVERVIEW_STEP) - 1,
+                $top + intdiv($player->getPosition()->getY(), self::OVERVIEW_STEP) - 1,
+                3,
+                3,
+                Pixels::pack($colours['coat'])
+            );
+        }
+
+        $this->overview = [
+            intdiv($this->mapWidth + $left, self::CELL),
+            intdiv($top, self::CELL),
+            intdiv($this->mapWidth + $left + $width, self::CELL),
+            intdiv($top + $height, self::CELL),
+        ];
+    }
+
+    /**
+     * A click on the overview, taken as "put me there".
+     *
+     * Answers false when the click was somewhere else, so the loop can carry
+     * on offering it to the map — the overview is small and sits inside the
+     * panel, and asking it first costs one comparison.
+     */
+    public function jumpTo(int $column, int $row): bool
+    {
+        if (null === $this->overview) {
+            return false;
+        }
+
+        [$left, $top, $right, $bottom] = $this->overview;
+
+        if ($column < $left || $column > $right || $row < $top || $row > $bottom) {
+            return false;
+        }
+
+        $this->camera->centreOn(
+            ($column - $left) * self::CELL * self::OVERVIEW_STEP,
+            ($row - $top) * self::CELL * self::OVERVIEW_STEP
+        );
+
+        return true;
     }
 
     private function paintBottom(): Pixels

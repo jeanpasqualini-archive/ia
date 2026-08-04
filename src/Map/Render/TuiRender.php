@@ -200,6 +200,16 @@ class TuiRender implements GameRenderInterface
     }
 
     /**
+     * No overview here, and none needed: the map view already shows the whole
+     * world at 1:8 on a hundred column terminal, so *where am I* is answerable
+     * from the picture itself.
+     */
+    public function jumpTo(int $column, int $row): bool
+    {
+        return false;
+    }
+
+    /**
      * Ignored here. Shading the ground costs nothing per frame — it is a
      * colour, and a colour that does not change is not sent — but the map is
      * *already* drawn in colour alone, so a slope and a terrain would be

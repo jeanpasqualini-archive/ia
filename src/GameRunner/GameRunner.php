@@ -454,6 +454,15 @@ class GameRunner
             return $this->toggleFollow();
         }
 
+        // The overview is asked before the map: it sits inside the panel, so a
+        // click on it is not a click on the world, and the two must not both
+        // answer.
+        if (MouseAction::Press === $mouse->action && $this->render->jumpTo($mouse->column, $mouse->row)) {
+            $this->audio->play(SoundEffect::Blip);
+
+            return true;
+        }
+
         if (!$this->render->isOverMap($mouse->column, $mouse->row)) {
             return false;
         }

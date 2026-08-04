@@ -142,6 +142,66 @@ final class SdlRenderTest extends TestCase
         self::assertTrue($render->zoomable());
     }
 
+    /**
+     * The overview answers *where am I* when the picture itself no longer can.
+     *
+     * The isometric view is always 1:1 and shows a few thousand tiles out of
+     * forty thousand, so it is the one view with no way to say where in the
+     * world it is looking.
+     */
+    public function testTheOverviewShowsTheWholeWorldAndTakesAClick(): void
+    {
+        $camera = new Camera();
+        $render = $this->render($camera);
+        $world = array_fill(0, 160, array_fill(0, 256, 'X'));
+
+        // Nothing has been drawn yet, so there is nothing to click on.
+        self::assertFalse($render->jumpTo(140, 60));
+
+        $render->compose($world);
+
+        // Swept rather than aimed: the box is decided by the panel's layout,
+        // and a test that hard-codes it is a test of the layout rather than of
+        // the overview.
+        $hits = [];
+
+        for ($row = 0; $row < 80; $row++) {
+            for ($column = 128; $column < 178; $column++) {
+                if ($render->jumpTo($column, $row)) {
+                    $hits[] = [$column, $row];
+                }
+            }
+        }
+
+        self::assertNotEmpty($hits, 'aucun clic ne tombe sur la mini carte');
+
+        // A 256x160 world sampled every other tile is 128x80 pixels, which is
+        // seventeen cells by eleven — measured, 187. The threshold is loose
+        // because the layout may move it; what it refuses is a box of four
+        // cells, which would be a rounding error rather than an overview.
+        self::assertGreaterThan(100, count($hits), 'la mini carte est minuscule');
+
+        $camera->centreOn(0, 0);
+        $before = [$camera->x(), $camera->y()];
+        [$column, $row] = $hits[count($hits) - 1];
+
+        self::assertTrue($render->jumpTo($column, $row));
+        self::assertNotSame($before, [$camera->x(), $camera->y()], 'la vue n a pas bouge');
+    }
+
+    /**
+     * A click on the map itself must not also be a jump: the overview sits
+     * inside the panel, so the two are asked in order and only one may answer.
+     */
+    public function testAClickOnTheWorldIsNotAJump(): void
+    {
+        $render = $this->render();
+        $render->compose(array_fill(0, 160, array_fill(0, 256, 'X')));
+
+        self::assertFalse($render->jumpTo(10, 10), 'un clic sur la carte a saute');
+        self::assertTrue($render->isOverMap(10, 10));
+    }
+
     private function water(int $x, int $y): int
     {
         return Pixels::pack((new TilePalette(trueColor: true))->pixel('E', $x, $y));

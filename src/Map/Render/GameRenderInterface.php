@@ -51,6 +51,13 @@ interface GameRenderInterface extends MapRenderInterface
     public function isOverFocusButton(int $column, int $row): bool;
 
     /**
+     * A click taken as "put me there" on an overview of the whole world, if
+     * the view has one. False when it was somewhere else, so the loop can
+     * carry on offering the click to the map.
+     */
+    public function jumpTo(int $column, int $row): bool;
+
+    /**
      * Swap between ways of looking at the world, where there is more than one.
      * Answers whether anything changed, so the loop knows to redraw — the
      * terminal has a single view and says no.
