@@ -54,8 +54,6 @@ class TilePalette
     /** Flowers are not all the same colour, which is half of why meadows read well. */
     private const BLOOMS = ['#e8619d', '#f2d13c', '#e05c5c', '#d98cf0'];
 
-    private const FOREST_GLYPH = '#74a862';
-
     /**
      * One glyph and one colour per player.
      *
@@ -99,8 +97,13 @@ class TilePalette
         }
 
         return match ($tile) {
-            MapBuilder::HERBE, MapBuilder::EAU => ' ',
-            MapBuilder::ARBRE => '♣',
+            // Every terrain is ground, and ground is a colour. The forest used
+            // to be the exception, drawn as a club suit — which macOS renders
+            // from the colour emoji font, two columns wide, shifting the whole
+            // row. mb_strwidth answers 1 for it, so the frame width test never
+            // saw it: Unicode says narrow, the font substitution says
+            // otherwise. A canopy is better read as a dark mass anyway.
+            MapBuilder::HERBE, MapBuilder::EAU, MapBuilder::ARBRE => ' ',
             MapBuilder::FLEUR => '✿',
             default => $tile,
         };
@@ -145,8 +148,9 @@ class TilePalette
             return Span::styled('  ', $style);
         }
 
-        // Vegetation leans left or right depending on the tile, which keeps a
-        // wood from looking like a printed grid.
+        // Flowers lean left or right depending on the tile, which keeps a bed
+        // of them from looking like a printed grid. They are the only thing
+        // still drawn as a character on the ground.
         return Span::styled(
             0 === $this->variant($x, $y) % 2 ? $glyph . ' ' : ' ' . $glyph,
             $style
@@ -167,9 +171,10 @@ class TilePalette
         }
 
         return match ($tile) {
+            // Nothing is drawn on top of these, so they carry a background
+            // and no foreground at all.
             MapBuilder::HERBE, MapBuilder::EAU, MapBuilder::ARBRE => Style::default()
-                ->bg($this->shade($tile, $variant))
-                ->fg(RgbColor::fromHex(self::FOREST_GLYPH)),
+                ->bg($this->shade($tile, $variant)),
             // A flower sits in the meadow, so it keeps the grass underneath.
             MapBuilder::FLEUR => Style::default()
                 ->bg($this->shade(MapBuilder::HERBE, $variant))
@@ -194,10 +199,13 @@ class TilePalette
     private function ansi(string $tile): Style
     {
         return match ($tile) {
-            MapBuilder::HERBE => Style::default()->bg(AnsiColor::Green)->fg(AnsiColor::Green),
-            MapBuilder::ARBRE => Style::default()->bg(AnsiColor::Green)->fg(AnsiColor::Black),
+            // Sixteen colours have no shades to spare, and the forest is no
+            // longer marked by a glyph, so the two greens have to do the work
+            // on their own: the meadow takes the light one, the wood the dark.
+            MapBuilder::HERBE => Style::default()->bg(AnsiColor::LightGreen)->fg(AnsiColor::LightGreen),
+            MapBuilder::ARBRE => Style::default()->bg(AnsiColor::Green)->fg(AnsiColor::Green),
             MapBuilder::EAU => Style::default()->bg(AnsiColor::Blue)->fg(AnsiColor::Blue),
-            MapBuilder::FLEUR => Style::default()->bg(AnsiColor::Green)->fg(AnsiColor::LightMagenta),
+            MapBuilder::FLEUR => Style::default()->bg(AnsiColor::LightGreen)->fg(AnsiColor::Magenta),
             default => null === self::playerIndex($tile)
                 ? Style::default()
                 : Style::default()->bg(AnsiColor::Black)->fg(match (self::playerIndex($tile) % 4) {

@@ -27,7 +27,7 @@ final class TilePaletteTest extends TestCase
         $palette = new TilePalette(trueColor: true);
 
         self::assertSame('✿', $palette->glyph(MapBuilder::FLEUR));
-        self::assertSame('♣', $palette->glyph(MapBuilder::ARBRE));
+        self::assertSame(' ', $palette->glyph(MapBuilder::ARBRE));
     }
 
     /**
@@ -61,6 +61,38 @@ final class TilePaletteTest extends TestCase
                 1,
                 mb_strwidth($palette->glyph($tile), 'UTF-8'),
                 sprintf('la tuile %s deborde sur sa voisine', $tile)
+            );
+        }
+    }
+
+    /**
+     * Measuring the width is not enough, and the forest is what proved it.
+     *
+     * A codepoint that has an emoji presentation gets substituted from the
+     * colour emoji font, which draws it two columns wide whatever Unicode
+     * says about it. The club suit that used to mark the wood measured one
+     * column in PHP and took two on screen, so the frame width test stayed
+     * green while the border sat one column off. \p{Emoji} catches the whole
+     * family rather than that one character.
+     */
+    public function testNoGlyphCanBeSubstitutedByTheEmojiFont(): void
+    {
+        $palette = new TilePalette(trueColor: true);
+        $glyphs = [];
+
+        foreach ([MapBuilder::HERBE, MapBuilder::EAU, MapBuilder::ARBRE, MapBuilder::FLEUR] as $tile) {
+            $glyphs[] = $palette->glyph($tile);
+        }
+
+        for ($player = 0; $player < 9; $player++) {
+            $glyphs[] = TilePalette::playerMarker($player);
+        }
+
+        foreach ($glyphs as $glyph) {
+            self::assertSame(
+                0,
+                preg_match('/\p{Emoji}/u', $glyph),
+                sprintf('%s (U+%04X) sera dessine par la police emoji', $glyph, mb_ord($glyph, 'UTF-8'))
             );
         }
     }

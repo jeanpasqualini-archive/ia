@@ -53,7 +53,10 @@ final class TuiRenderTest extends TestCase
         // Terrain is painted as a background colour, so only what stands on
         // the ground still has a glyph of its own.
         self::assertStringContainsString('✿', $frame, 'la fleur est dessinee');
-        self::assertStringContainsString('♣', $frame, 'le sous-bois est dessine');
+        // The forest is ground and is painted, not written. The club suit it
+        // used to carry is drawn from the colour emoji font on macOS, two
+        // columns wide, which no width measurement in PHP reports.
+        self::assertStringNotContainsString('♣', $frame, 'le sous-bois est peint, pas ecrit');
     }
 
     public function testThePlayerGlyphIsDrawnOverTheGround(): void
