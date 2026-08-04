@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace GameRunner;
 
+use Audio\NullAudioOutput;
+use Audio\SdlAudioOutput;
+use Audio\SoundBoard;
+use Audio\SoundEffect;
 use InputController\InputControllerInterface;
 use InputController\TerminalInputController;
 use Logger\FileLogger;
@@ -58,6 +62,15 @@ class GameRunner
     /** Set to replay the exact same terrain across runs. */
     private ?int $seed = null;
 
+    private bool $sound = true;
+
+    /**
+     * Flowers left on the map at the end of the last frame. Eating is the
+     * only thing that removes one, so a drop is how the runner hears about a
+     * meal without the simulation having to announce it.
+     */
+    private int $flowers = 0;
+
     private MultipleLogger $logger;
 
     private WorldContainer $worldContainer;
@@ -71,6 +84,8 @@ class GameRunner
     private TuiRender $render;
 
     private InputControllerInterface $input;
+
+    private SoundBoard $audio;
 
     private World $world;
 
@@ -107,6 +122,10 @@ class GameRunner
         if (!empty($options['play'])) {
             $this->timeControl->play();
         }
+
+        if (!empty($options['mute'])) {
+            $this->sound = false;
+        }
     }
 
     public function execute(): int
@@ -118,12 +137,22 @@ class GameRunner
         $this->memoryManager = new MemoryManager($this->flashName);
         $this->input = new TerminalInputController($this->terminal);
 
+        // Started before the alternate screen is taken: synthesizing the
+        // theme costs a moment, and SDL is entitled to complain on stderr —
+        // both belong on the normal screen, not inside a frame.
+        $this->audio = new SoundBoard(
+            $this->sound ? new SdlAudioOutput() : new NullAudioOutput(),
+            $this->logger
+        );
+        $this->audio->start();
+
         $this->render = new TuiRender(
             $this->terminal,
             $this->logger,
             $this->worldContainer,
             $this->memoryManager,
-            $this->timeControl
+            $this->timeControl,
+            audio: $this->audio
         );
 
         try {
@@ -138,12 +167,20 @@ class GameRunner
                     break;
                 }
 
+                // Fed from the loop rather than from advance(): the music has
+                // to keep playing while the game is paused or browsing the
+                // past, which is exactly when advance() computes nothing.
+                $this->audio->tick();
+
                 if (!$this->advance()) {
                     usleep(self::IDLE_DELAY);
                 }
             }
         } finally {
+            // The terminal comes back first: whatever the audio does on the
+            // way out, the user must be able to read it.
             $this->render->close();
+            $this->audio->close();
         }
 
         return 0;
@@ -191,6 +228,7 @@ class GameRunner
 
         $this->logger->mute(false);
 
+        $this->watchForEating();
         $this->checkMemory();
         $this->draw();
 
@@ -230,6 +268,7 @@ class GameRunner
             'a' => $this->travel(1),
             'x' => $this->persist(),
             'r' => $this->reload(),
+            'm' => $this->toggleMute(),
             "\t" => $this->nextTab(),
             // Historic bindings, kept so the old muscle memory still works.
             'b' => $this->togglePause(true),
@@ -257,6 +296,23 @@ class GameRunner
             null => $this->timeControl->togglePause(),
         };
 
+        $this->audio->play(SoundEffect::Blip);
+
+        return true;
+    }
+
+    private function toggleMute(): bool
+    {
+        $muted = $this->audio->toggleMute();
+
+        // Announced after unmuting, never before muting: the blip would
+        // otherwise be the last thing heard on the way to silence.
+        if (!$muted) {
+            $this->audio->play(SoundEffect::Blip);
+        }
+
+        $this->logger->log(LogLevel::INFO, '[AUDIO] son ' . ($muted ? 'coupe' : 'actif'));
+
         return true;
     }
 
@@ -270,6 +326,7 @@ class GameRunner
     private function changeSpeed(bool $faster): bool
     {
         $faster ? $this->timeControl->faster() : $this->timeControl->slower();
+        $this->audio->play(SoundEffect::Blip);
 
         return true;
     }
@@ -277,6 +334,7 @@ class GameRunner
     private function nextTab(): bool
     {
         $this->render->nextTab();
+        $this->audio->play(SoundEffect::Blip);
 
         return true;
     }
@@ -288,6 +346,7 @@ class GameRunner
         }
 
         $this->render->selectTab((int) $key - 1);
+        $this->audio->play(SoundEffect::Blip);
 
         return true;
     }
@@ -304,6 +363,7 @@ class GameRunner
     {
         $this->logger->log(LogLevel::INFO, 'soft reload game');
         $this->setWorld($this->createWorld());
+        $this->audio->play(SoundEffect::Reload);
 
         return true;
     }
@@ -311,6 +371,7 @@ class GameRunner
     private function toggleTimeMachine(): bool
     {
         $this->timeControl->toggleTimeMachine();
+        $this->audio->play(SoundEffect::Warp);
         $this->logger->log(
             LogLevel::INFO,
             'mode timemachine ' . ($this->timeControl->isTimeMachine() ? 'active' : 'desactive')
@@ -343,8 +404,30 @@ class GameRunner
         }
 
         $this->setWorld($world);
+        $this->audio->play(SoundEffect::Blip);
 
         return true;
+    }
+
+    /**
+     * Watch the map for a flower that disappeared.
+     *
+     * Polled from outside rather than announced by the simulation, and that
+     * is deliberate: the world is serialized into snapshots, so anything it
+     * held a reference to would have to survive a round trip — an audio
+     * device cannot. Counting is also what makes this correct at speed, where
+     * a frame batches a thousand ticks and several cats may have eaten within
+     * it: one drop, one sound.
+     */
+    private function watchForEating(): void
+    {
+        $flowers = count($this->world->getMap()->positionsOf(MapBuilder::FLEUR));
+
+        if ($flowers < $this->flowers) {
+            $this->audio->play(SoundEffect::Eat);
+        }
+
+        $this->flowers = $flowers;
     }
 
     /**
@@ -433,6 +516,11 @@ class GameRunner
         $this->world->setLogger($this->logger);
         $this->world->setInputController($this->input);
         $this->worldContainer->setWorld($world);
+
+        // A new map, or a jump back through the time machine, moves the
+        // flower count by any amount at all. Rebasing it here is what stops
+        // that from being heard as a meal.
+        $this->flowers = count($world->getMap()->positionsOf(MapBuilder::FLEUR));
     }
 
     private function createWorld(): World

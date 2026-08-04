@@ -3,7 +3,7 @@
 DC  := docker-compose
 RUN := $(DC) run --rm app
 
-.PHONY: help build install run test shell logs clean
+.PHONY: help build install run play test shell logs clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -23,8 +23,14 @@ app/log:
 
 ARGS ?=
 
-run: install app/log ## Play the game (full screen). ARGS='--play --speed 1000'
+run: install app/log ## Play the game in the container (full screen, no sound)
 	$(RUN) php ./console $(ARGS)
+
+# The container has no sound card and cannot be given one on macOS, so the
+# music only exists on this target. It logs to app/log/dev.log like the
+# container does, so `make logs` works either way.
+play: install app/log ## Play on the host PHP, with sound (needs php and libsdl2)
+	php ./console --log app/log/dev.log $(ARGS)
 
 test: install ## Run the test suite
 	$(RUN) ./vendor/bin/phpunit

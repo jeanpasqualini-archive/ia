@@ -9,14 +9,15 @@ A PHP toy AI simulation: a cat (`Chat`) wanders a tile map, gets hungry, walks t
 ## Running
 
 ```bash
-make run      # play (full screen, needs a real TTY)
+make run      # play in the container (full screen, needs a real TTY, no sound)
+make play     # play on the host PHP, with sound
 make test     # phpunit
 make logs     # tail app/log/dev.log from another terminal
 make shell    # shell in the container
 make help     # all targets
 ```
 
-Keys: `space` play/pause, `n` one tick, `-`/`+` speed, `t` time machine then `p`/`a` to browse snapshots, `tab` or `1`..`9` to switch AI panel, `r` new map, `x` persist memory, `q` quit (`b`/`s` are kept as pause/play aliases). The game starts paused; `--play` starts it running.
+Keys: `space` play/pause, `n` one tick, `-`/`+` speed, `t` time machine then `p`/`a` to browse snapshots, `tab` or `1`..`9` to switch AI panel, `r` new map, `x` persist memory, `m` mute, `q` quit (`b`/`s` are kept as pause/play aliases). The game starts paused; `--play` starts it running.
 
 In raw mode Ctrl+C is delivered as a key event, not a signal — quit with `q`. If the process is killed from outside, the tty is left raw: run `reset`.
 
@@ -31,6 +32,26 @@ The ncurses PECL extension was abandoned in 2012 and never ported past PHP 7, wh
 Nothing may write to stdout while the game runs: a stray notice lands inside the alternate screen and corrupts the frame. `console` sets `error_reporting(E_ALL & ~E_DEPRECATED)` because php-tui/term still declares implicitly nullable parameters, which PHP 8.4 reports when the class loads.
 
 The frame is three rows: map + sidebar, log pane, control bar. The sidebar stacks an AI panel — a `TabsWidget` with one tab per player, the selected one detailing its stomach gauge and the descriptions returned by `ObjectifInterface::describe()` — over a live memory panel. The control bar owns everything time-related: play/pause, speed, and the snapshot gauge that only appears in time-machine mode. Tab selection lives in `TuiRender` (`nextTab`/`selectTab`); the runner just forwards keys.
+
+## Sound: synthesized in PHP, pushed through SDL2 over FFI
+
+PHP has no audio output — nothing in the core, and `ext-openal` died with PHP 7, the same story as ncurses. So the chip tune is **synthesized in pure PHP** (`Audio\Synth`, square/sweep/noise into unsigned 8 bit mono PCM) and handed to a device bound at runtime through FFI.
+
+**The whole design follows from one limit: PHP callbacks cannot be invoked from a foreign thread.** Every audio API that *pulls* samples from its own thread — CoreAudio's AudioQueue, PortAudio in callback mode, SDL's own callback mode — would crash the process instead of raising anything. `SDL_QueueAudio` pushes instead, and `SDL_GetQueuedAudioSize` lets the game loop see how much lead is left, so no C code ever calls back into PHP. That is why it is SDL and not the obvious macOS API.
+
+A C extension was considered and rejected on this repository's own terms: it spent its recent history escaping a native extension that had pinned it to PHP 7.2 and a dead image. FFI binds at runtime and is skipped when the library is absent.
+
+**The container has no sound card**, and cannot be given one on macOS without a PulseAudio server on the host. `make run` is therefore silent by design and `make play` (host PHP) is where the music is. `AudioOutputInterface` makes that a swap, not a branch: `NullAudioOutput` answers false to `open()` and the sound board never even synthesizes the theme.
+
+`SDL_AudioSpec` is transcribed by hand and must match the ABI — 32 bytes on arm64, asserted by `SdlAudioOutputTest`, because a wrong layout corrupts memory rather than raising an error.
+
+Volumes are a **budget, not a preference**: the four voices total 82 of the 127 a byte allows, leaving exactly the 45 the loudest effect needs to land on top without the sum clipping (`testTheMusicLeavesRoomForASoundEffect`). `Mixer` saturates and never wraps — a sample allowed to overflow comes back as the opposite extreme, which is heard as a crack, not as distortion.
+
+Note durations are counted **in samples, never in seconds**: rounding each note from its own duration lets the four voices drift apart, and a loop whose tracks end at different points clicks on every repeat (`testEveryVoiceIsExactlyTheSameLength`).
+
+`SoundBoard::BUFFER_SECONDS` keeps a fifth of a second ahead of the speaker. Less and a slow frame — batching a thousand ticks at x1000 — drains the queue and the music gaps; more and a key press blip is heard too long after the key.
+
+**Sound effects are triggered by the runner watching the world, never by the domain announcing them.** `World` is serialized into snapshots and an FFI handle is not serializable, so nothing audio-shaped may be reachable from it. Eating is detected by counting flowers between frames — they only ever disappear by being eaten — which is also what makes it right at x1000, where one frame may contain several meals. `GameRunner::setWorld()` rebases that count, otherwise a new map or a jump through the time machine would be heard as a meal.
 
 ## Memory and exit 137
 
@@ -102,7 +123,7 @@ Serialization is the sharp edge of this codebase. Anything added to `World` or a
 
 ## Tests
 
-`make test` — 19 tests covering map queries and bounds, cat behaviour end-to-end (walks, eats, turns the flower to grass), snapshot round-trips, and headless frame rendering. `tests/WorldFactory.php` builds worlds from ASCII rows so nothing depends on the random provider.
+`make test` — 111 tests covering map queries and bounds, cat behaviour end-to-end (walks, eats, turns the flower to grass), snapshot round-trips, headless frame rendering, and the audio (oscillators, mixing, loop length, the feeding of the device against a fake output). The SDL test skips itself when the library is absent, which is the normal outcome in the container. `tests/WorldFactory.php` builds worlds from ASCII rows so nothing depends on the random provider.
 
 `phpunit.xml.dist` fails on warnings, notices and deprecations, but `ignoreIndirectDeprecations` keeps vendor deprecations from failing the suite.
 

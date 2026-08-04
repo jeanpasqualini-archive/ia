@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Map\Render;
 
+use Audio\SoundBoard;
 use IA\CatIA;
 use Logger\BufferLogger;
 use Logger\MultipleLogger;
@@ -69,6 +70,7 @@ class TuiRender implements MapRenderInterface
         private ?Backend $backend = null,
         private MemoryUsage $memoryUsage = new MemoryUsage(),
         private ?TilePalette $palette = null,
+        private ?SoundBoard $audio = null,
     ) {
         $this->palette ??= TilePalette::detect();
         $this->bufferLog = new BufferLogger();
@@ -380,6 +382,17 @@ class TuiRender implements MapRenderInterface
             Span::fromString('  '),
             $this->button(' t machine ', $this->timeControl->isTimeMachine()),
         ];
+
+        // Only shown when there is a device to be silent about: inside the
+        // container there is no sound to mute, and a dead button would just
+        // be a promise the build cannot keep.
+        if (true === $this->audio?->isReady()) {
+            $spans[] = Span::fromString('  ');
+            $spans[] = $this->button(
+                $this->audio->isMuted() ? ' m muet ' : ' m son ',
+                !$this->audio->isMuted()
+            );
+        }
 
         if ($this->timeControl->isTimeMachine()) {
             $spans[] = Span::fromString(' ');

@@ -23,6 +23,7 @@ class ApplicationCommand extends Command
             ->addOption('speed', null, InputOption::VALUE_REQUIRED, 'vitesse de depart (0.25 a 1000)')
             ->addOption('map', null, InputOption::VALUE_REQUIRED, 'charge une map depuis un fichier')
             ->addOption('seed', null, InputOption::VALUE_REQUIRED, 'graine du terrain, pour rejouer la meme carte')
+            ->addOption('mute', null, InputOption::VALUE_NONE, 'demarre sans son (la touche m le fait aussi)')
             ->addOption('flash-name', null, InputOption::VALUE_REQUIRED, 'nom du dump memoire', 'game')
             ->addOption('log', null, InputOption::VALUE_REQUIRED, 'fichier de log', '/tmp/log/dev.log');
     }

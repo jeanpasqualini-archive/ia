@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Map\Render;
 
+use Audio\SoundBoard;
 use Logger\MultipleLogger;
 use Map\Render\TuiRender;
 use Map\World\WorldContainer;
@@ -18,6 +19,7 @@ use PHPUnit\Framework\TestCase;
 use Runtime\MemoryUsage;
 use Runtime\TimeControl;
 use Snapshot\Instant;
+use Tests\Audio\FakeAudioOutput;
 use Tests\WorldFactory;
 
 /**
@@ -220,6 +222,36 @@ final class TuiRenderTest extends TestCase
         }
     }
 
+    /**
+     * The mute button only exists when a device was found, so it is absent
+     * from every other frame the tests render — including the one above. It
+     * adds spans to the control bar, which is exactly the kind of change that
+     * pushes a row past the edge of the screen.
+     */
+    public function testTheMuteButtonDoesNotPushTheControlBarOffScreen(): void
+    {
+        $audio = $this->readyAudio();
+        $render = $this->render(audio: $audio);
+
+        foreach ([false, true] as $muted) {
+            $render->render([['X', 'F'], ['E', 'X']]);
+
+            foreach (explode("\n", $this->backend->toString()) as $number => $row) {
+                if ('' === $row) {
+                    continue;
+                }
+
+                self::assertSame(
+                    100,
+                    mb_strwidth($row, 'UTF-8'),
+                    sprintf('la ligne %d deborde, son %s', $number, $muted ? 'coupe' : 'actif')
+                );
+            }
+
+            $audio->toggleMute();
+        }
+    }
+
     public function testTheMemoryPanelReportsBothCeilingsAndTheSnapshotRing(): void
     {
         $memory = new MemoryManager('test');
@@ -254,6 +286,7 @@ final class TuiRenderTest extends TestCase
         ?MemoryManager $memoryManager = null,
         ?TimeControl $timeControl = null,
         ?MemoryUsage $memoryUsage = null,
+        ?SoundBoard $audio = null,
     ): TuiRender {
         $terminal = Terminal::new(
             AnsiPainter::new(StringWriter::new()),
@@ -269,6 +302,19 @@ final class TuiRenderTest extends TestCase
             $timeControl ?? new TimeControl(),
             $this->backend,
             $memoryUsage ?? new MemoryUsage(),
+            audio: $audio,
         );
+    }
+
+    /**
+     * A sound board that believes it has a device, so the control bar draws
+     * the mute button it only shows when there is something to mute.
+     */
+    private function readyAudio(): SoundBoard
+    {
+        $board = new SoundBoard(new FakeAudioOutput());
+        $board->start();
+
+        return $board;
     }
 }
