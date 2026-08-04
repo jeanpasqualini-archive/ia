@@ -413,6 +413,7 @@ class GameRunner
             'z' => $this->zoom(closer: true),
             'Z' => $this->zoom(closer: false),
             'c' => $this->focusPlayer(),
+            'v' => $this->render->toggleView(),
             // Ctrl+L, as everywhere else, plus a plain letter because in raw
             // mode a control character is not always what reaches us.
             "\f", 'f' => $this->repaint(),

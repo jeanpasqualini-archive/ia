@@ -43,6 +43,13 @@ interface GameRenderInterface extends MapRenderInterface
     public function isOverFocusButton(int $column, int $row): bool;
 
     /**
+     * Swap between ways of looking at the world, where there is more than one.
+     * Answers whether anything changed, so the loop knows to redraw — the
+     * terminal has a single view and says no.
+     */
+    public function toggleView(): bool;
+
+    /**
      * A movement on screen turned into tiles.
      *
      * @return array{int, int}

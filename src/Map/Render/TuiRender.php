@@ -183,6 +183,16 @@ class TuiRender implements GameRenderInterface
         $this->display?->clear();
     }
 
+    /**
+     * There is one way to look at the world in a terminal. The isometric view
+     * needs real pixels — a lattice of diamonds cannot be drawn from half
+     * blocks — so this says no rather than pretending.
+     */
+    public function toggleView(): bool
+    {
+        return false;
+    }
+
     public function nextTab(): void
     {
         $count = count($this->players());
