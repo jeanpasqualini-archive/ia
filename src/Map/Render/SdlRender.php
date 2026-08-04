@@ -109,6 +109,9 @@ final class SdlRender implements GameRenderInterface
      */
     private bool $isometric = false;
 
+    /** Zoom levels given up on entering the isometric view, put back on exit. */
+    private int $zoomAway = 0;
+
     private Dashboard $dashboard;
 
     private ?float $startedAt = null;
@@ -323,12 +326,45 @@ final class SdlRender implements GameRenderInterface
         ];
     }
 
-    /** Swap the two ways of looking. Bound to `v`. */
+    /**
+     * Swap the two ways of looking. Bound to `v`.
+     *
+     * **The isometric view is always 1:1, and the zoom is put back on the way
+     * out.** Its coverage is a diamond of some seventy cells a side, so at 1:4
+     * it asks the world for nearly three hundred rows where there are a
+     * hundred and sixty: everything past the edge is skipped and the picture
+     * closes into a wedge with sky around it. Sampling would be meaningless
+     * there anyway — a tree standing for eight tiles says nothing — and the
+     * two views already divide the work between them: the map is the world at
+     * a glance, this is the close look.
+     */
     public function toggleView(): bool
     {
         $this->isometric = !$this->isometric;
 
-        return $this->isometric;
+        if ($this->isometric) {
+            $this->zoomAway = 0;
+
+            while (!$this->camera->isClosest()) {
+                $this->camera->zoomIn();
+                ++$this->zoomAway;
+            }
+
+            return true;
+        }
+
+        for ($step = 0; $step < $this->zoomAway; $step++) {
+            $this->camera->zoomOut();
+        }
+
+        $this->zoomAway = 0;
+
+        return false;
+    }
+
+    public function zoomable(): bool
+    {
+        return !$this->isometric;
     }
 
     public function isIsometric(): bool
@@ -643,7 +679,7 @@ final class SdlRender implements GameRenderInterface
             $this->timeControl->isPaused() ? '▶' : '▮▮',
             $this->timeControl->speedLabel(),
             $this->camera->label(),
-            $this->isometric ? 'v carte' : 'v 2.5d'
+            $this->isometric ? 'v carte    2.5d toujours a 1:1' : 'v 2.5d'
         );
 
         BitmapFont::write(

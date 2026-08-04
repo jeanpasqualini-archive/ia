@@ -114,6 +114,34 @@ final class SdlRenderTest extends TestCase
         self::assertFalse($this->render()->isOverMap(128, 0));
     }
 
+    /**
+     * **The isometric view is always 1:1, and it puts the zoom back.**
+     *
+     * Its coverage is a diamond of some seventy cells a side, so at 1:4 it
+     * asks the world for nearly three hundred rows where there are a hundred
+     * and sixty. Measured, that leaves 41% of the screen as sky, and 92% at
+     * 1:8 — the picture closes into a wedge. Swapping views must not cost the
+     * zoom the map view was set to either.
+     */
+    public function testTheIsometricViewIsAlwaysCloseAndGivesTheZoomBack(): void
+    {
+        $camera = new Camera();
+        $camera->zoomOut();
+        $camera->zoomOut();
+        self::assertSame(4, $camera->scale());
+
+        $render = $this->render($camera);
+
+        self::assertTrue($render->zoomable(), 'la carte se zoome');
+        self::assertTrue($render->toggleView());
+        self::assertSame(1, $camera->scale(), 'la 2.5d echantillonne le monde');
+        self::assertFalse($render->zoomable(), 'la 2.5d accepte encore le zoom');
+
+        self::assertFalse($render->toggleView());
+        self::assertSame(4, $camera->scale(), 'le zoom de la carte est perdu');
+        self::assertTrue($render->zoomable());
+    }
+
     private function water(int $x, int $y): int
     {
         return Pixels::pack((new TilePalette(trueColor: true))->pixel('E', $x, $y));

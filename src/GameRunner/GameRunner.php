@@ -606,6 +606,13 @@ class GameRunner
 
     private function zoom(bool $closer): bool
     {
+        // Asked rather than assumed: the isometric view is always 1:1, and
+        // zooming out there empties most of the screen instead of showing
+        // more of the world.
+        if (!$this->render->zoomable()) {
+            return false;
+        }
+
         $closer ? $this->camera->zoomIn() : $this->camera->zoomOut();
         $this->audio->play(SoundEffect::Blip);
 

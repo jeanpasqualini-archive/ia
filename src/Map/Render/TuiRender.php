@@ -194,6 +194,11 @@ class TuiRender implements GameRenderInterface
         return false;
     }
 
+    public function zoomable(): bool
+    {
+        return true;
+    }
+
     /**
      * Ignored here. Shading the ground costs nothing per frame — it is a
      * colour, and a colour that does not change is not sent — but the map is
