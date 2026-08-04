@@ -63,13 +63,17 @@ There is deliberately **no death**. A cat that died would have to leave the worl
 ```bash
 make run      # play in the container (full screen, needs a real TTY, no sound)
 make play     # play on the host PHP, with sound
+make window   # play in an SDL window instead of the terminal, on the host
+make demo     # a throwaway 2.5D sketch of the map, printed once
 make test     # phpunit
 make logs     # tail app/log/dev.log from another terminal
 make shell    # shell in the container
 make help     # all targets
 ```
 
-Keys: `space` play/pause, `n` one tick, `-`/`+` speed, **arrows to move the view, `z`/`Z` to zoom in and out, or drag the map with the mouse and zoom with the wheel**, `c` centre on the selected cat, `t` time machine then `p`/`a` to browse snapshots, `tab` or `1`..`9` to switch AI panel, `r` new map, `x` persist memory, `m` mute, `q` quit (`b`/`s` are kept as pause/play aliases). The game starts paused; `--play` starts it running.
+Keys: `space` play/pause, `n` one tick, `-`/`+` speed, **arrows to move the view, `z`/`Z` to zoom in and out, or drag the map with the mouse and zoom with the wheel**, `c` centre on the selected cat, `t` time machine then `p`/`a` to browse snapshots, `tab` or `1`..`9` to switch AI panel, `r` new map, `x` persist memory, `m` mute, `f` (or ctrl-L) repaint the whole screen, **`v` swap between the map and the isometric view, in the window**, `q` quit (`b`/`s` are kept as pause/play aliases). The game starts paused; `--play` starts it running.
+
+`--window` draws in an SDL window rather than in the terminal. `--colours=16` or `--colours=24` forces the colour depth instead of trusting `COLORTERM`, which is inherited and therefore wrong in both directions.
 
 In raw mode Ctrl+C is delivered as a key event, not a signal — quit with `q`. If the process is killed from outside, the tty is left raw: run `reset`.
 
@@ -77,19 +81,80 @@ Docker runs `php:8.4-cli`; nothing but `ext-intl` is compiled. Since the rendere
 
 ## Rendering: php-tui, not ncurses
 
+There are two renderers now — the terminal below, and a window further down — but they share the camera, the palette and the content of the panels, so most of what follows governs both.
+
 The ncurses PECL extension was abandoned in 2012 and never ported past PHP 7, which used to pin this project to PHP 7.2 and a dead Debian image. It was replaced by [php-tui](https://php-tui.github.io/php-tui) (a Ratatui port) which emits ANSI escapes from pure PHP.
 
-`TuiRender` is the only class that talks to the terminal. It builds a `Display` through `DisplayBuilder::default($backend)->fullscreen()`, then takes the alternate screen and raw mode in `init()` and gives them back in `close()`. **The alternate screen is what keeps the UI a fixed dashboard rather than output scrolling under the shell prompt** — if you touch `init()`/`close()`, keep the ordering (alternate screen before raw mode, reverse on the way out) and keep `close()` in a `finally`.
+`TuiRender` is the only class that talks to the terminal — it is no longer the only renderer, but nothing else emits an escape sequence. It builds a `Display` through `DisplayBuilder::default($backend)->fullscreen()`, then takes the alternate screen and raw mode in `init()` and gives them back in `close()`. **The alternate screen is what keeps the UI a fixed dashboard rather than output scrolling under the shell prompt** — if you touch `init()`/`close()`, keep the ordering (alternate screen before raw mode, reverse on the way out) and keep `close()` in a `finally`.
 
 Nothing may write to stdout while the game runs: a stray notice lands inside the alternate screen and corrupts the frame. `console` sets `error_reporting(E_ALL & ~E_DEPRECATED)` because php-tui/term still declares implicitly nullable parameters, which PHP 8.4 reports when the class loads.
 
 The frame is three rows: map + sidebar, log pane, control bar. The sidebar stacks an AI panel — a `TabsWidget` with one tab per player, the selected one detailing its stomach gauge and the descriptions returned by `ObjectifInterface::describe()` — over a live memory panel. The control bar owns everything time-related: play/pause, speed, and the snapshot gauge that only appears in time-machine mode. Tab selection lives in `TuiRender` (`nextTab`/`selectTab`); the runner just forwards keys.
+
+**A frame carries only what changed, and that is the whole economy of the thing.** It is also what makes any byte the terminal loses or misreads a permanent mark: the renderer believes that cell is already right and will never paint it again. `f`, or ctrl-L, throws the record away so the next frame is painted whole — the key every full screen program has had for forty years, and the only way out of damage the renderer cannot see.
+
+### What a terminal costs, measured
+
+**A write to the tty blocks.** So a terminal that cannot swallow a frame does not merely show it late — it stalls the simulation behind it, and `TimeControl::observe()` reports the shortfall in red. That makes escape volume a budget rather than an optimisation, and it was measured on a hundred and sixty column screen:
+
+- a full repaint: **135 KB**
+- a frame with the water animated continuously: **35 KB**, which is half a megabyte a second at 15 fps
+- the same with the swell quantised to six steps: **5 KB**, 73 KB/s
+- a frame where nothing moved at all: **14 bytes**
+
+The middle line is the one that mattered. php-tui sends only the cells that changed, so a *continuous* colour guarantees every cell of every lake changed: 93% of water tiles a frame, against 8% quantised. Electron terminals do not survive the first figure.
+
+### The water is the only thing that moves
+
+`TilePalette::swell()` draws the lake from two travelling waves summed — one alone is a ruler sliding across the water and its period is plain within a second — and quantised to six steps for the budget above. The phase is in **seconds of wall clock, never in ticks**: read from the tick it would boil at x1000 and freeze while paused, and an animation is a way of looking rather than something the world does, exactly like the camera. It is read once per frame, or the bottom of the lake would be older than its top.
+
+It *is* frozen while the world is, though. A lake rippling on a paused game holds the terminal busy for as long as the game is left open, which is most of the time it is open. Below x1 the frame lasts longer than the animation wants, so `GameRunner::waitUntil()` breaks the wait into slices and lets `animate()` decide whether a redraw is due — `draw()` timestamps itself, so a frame drawn for a real reason is never drawn twice.
+
+### A cat is one tile out of forty thousand
+
+`CatSprite` floats a small drawn cat over each player: thirteen by twelve tiles, in tiles rather than cells because a tile is half a cell and half a cell is square, so the art comes out undistorted. Its size is in tiles of the *view*, so zooming out does not shrink it away — losing the marker is precisely what one zooms out to avoid.
+
+Three things it needed, and each was a bug first:
+
+- **An outline.** On a meadow carrying some hundred and ninety flowers, brambles and holes per screen, a shape with no dark line round it has no silhouette at all: it dissolves into the speckle and reads as a rendering fault rather than as a cat. `testTheCatIsOutlinedAllTheWayRound` checks the ring is closed, and it is what found first the tail and then the belly left bare.
+- **A second coat colour that is darker fur, never a cream.** The first pair was a red coat and a near white patch over a near white cloud: the right half of the animal melted into the thing it was sitting on.
+- **A gap measured at the bottom of the bob and not at rest.** Counted at rest, the cloud comes down onto the cat once a cycle and hides the one tile the whole marker exists to point at.
+
+Each cat is given its own place in the bob's cycle, for the same reason the water is drawn from two waves: in step, several of them read as one animation copied a few times.
+
+## Two renderers, and two ways of looking
+
+`--window` draws the game in an SDL window instead of the terminal. It is **a renderer of the game and not a demo**: every feature follows because none of them was rewritten.
+
+- **`Runtime\Camera` is shared**, so `z`, `Z`, the arrows, the wheel and `c` land in the same place in both. A second copy of that arithmetic is how two views of one world end up disagreeing about where a cat is.
+- **`InputController\SdlInput` answers in the vocabulary the loop already speaks** — a character, an arrow sentinel, or a `MouseInput` in cells — so `pumpInput()` gained no branch at all. A second key table is how two front ends end up with two sets of shortcuts.
+- **`TilePalette` is shared**, so the meadow keeps its hashed grain and the lake its swell in both.
+
+`Map\Render\Dashboard` is what makes two renderers possible without them drifting. `TuiRender` used to hold both halves: the same method read the stomach, called `describe()` and asked `MemoryUsage`, *and* built `BlockWidget`s. A line is now a string and a **tone** — a meaning, never a colour — and php-tui turns it into an `AnsiColor` while the window turns it into a packed integer, neither knowing what the other chose. `GameRenderInterface` is the rest of the contract: the loop asks for the tab, the selected cat and where a click landed, and the renderer answers in half blocks or in square cells without the loop caring.
+
+**SDL cannot write a single character, and does not have to.** The map is already composed as a buffer of pixels in PHP, so text is more pixels in the same buffer: `BitmapFont` is 665 bytes of 5x7 glyphs. That was the whole of the obstacle — no SDL_ttf, no second library to find at runtime, no second header to transcribe against an ABI that corrupts memory when it is wrong.
+
+**`Map\Render\Pixels` knows nothing of SDL**, which is what makes the window testable: `SdlRender::compose()` builds all three surfaces of a frame with no display anywhere near it, the same seam php-tui's recording backend gives the terminal. It also hid a good bug — `rect()` used `array_splice`, which reindexes the whole array, so on a panel of a quarter of a million pixels a one pixel border cost more than the simulation and hung the suite.
+
+**Two resolutions, on purpose.** The map is a texture of one pixel per cell blown up by the GPU with nearest neighbour: painting it at window resolution would be a million pixels a frame in PHP instead of ten thousand. Text at that scale would come out in letters as tall as a lake, so the panels are their own textures at true pixel size.
+
+### The isometric view
+
+`v` swaps the map for a lattice of diamonds where what stands on the ground is drawn as a shape — `IsoSprites` holds a tree that is a trunk and a canopy, a foxglove standing taller than the blooms it hides among, a bramble low to the ground, a cat seen from the side. The ground itself is not drawn but *generated*, and its colour comes from `TilePalette::pixel()`, so the isometric view inherits the grain and the swell for nothing. A sprite's own colour is read there too, which is why a foxglove is still the cold one among the warm: the cat has to be able to be wrong about it and the player has to be able to see that it was.
+
+Composed at half the area it fills and blown up. Measured on a real 256x160 terrain: **13 ms a frame at 512x320**, against 15 ms for the bare ground at full size — the chunky pixel is what buys the objects, and it is the same pixel the map view already shows.
+
+**Drawn back to front by depth.** A diamond lattice has no row order that is also a depth order — screen height comes from the *sum* of the two world axes — so the loop walks that sum. Iterating rows instead puts trees in front of the cats standing before them.
+
+Two geometry mistakes the tests found and reading would not have. The lattice fans out from a point, so drawn from the top of the view it left both upper corners bare, and it has to start *above* the view and be clipped. Correcting only that left the two lower corners bare for the mirror reason: a lattice sized by depth alone narrows towards the bottom exactly as it does towards the top. `IsoView::coverage()` therefore solves for the far corner — a screen position comes from the sum *and* the difference of the axes — rather than counting rows.
 
 ## Sound: synthesized in PHP, pushed through SDL2 over FFI
 
 PHP has no audio output — nothing in the core, and `ext-openal` died with PHP 7, the same story as ncurses. So the chip tune is **synthesized in pure PHP** (`Audio\Synth`, square/sweep/noise into unsigned 8 bit mono PCM) and handed to a device bound at runtime through FFI.
 
 **The whole design follows from one limit: PHP callbacks cannot be invoked from a foreign thread.** Every audio API that *pulls* samples from its own thread — CoreAudio's AudioQueue, PortAudio in callback mode, SDL's own callback mode — would crash the process instead of raising anything. `SDL_QueueAudio` pushes instead, and `SDL_GetQueuedAudioSize` lets the game loop see how much lead is left, so no C code ever calls back into PHP. That is why it is SDL and not the obvious macOS API.
+
+**The video side reuses the binding and escapes that limit entirely.** `Runtime\Sdl` binds `SDL_CreateWindow`, `SDL_UpdateTexture` and `SDL_PollEvent` the same way, and there is no callback anywhere: the renderer polls, the renderer draws, the renderer presents. No C code ever calls back into PHP. What was nearly impossible for the speaker is ordinary for the screen — worth remembering before assuming the audio design generalises.
 
 A C extension was considered and rejected on this repository's own terms: it spent its recent history escaping a native extension that had pinned it to PHP 7.2 and a dead image. FFI binds at runtime and is skipped when the library is absent.
 
@@ -167,7 +232,11 @@ Shapes survive in the side panel, where text flows, and the rule below still gov
 
 `TilePalette` decides how a tile is painted. Terrain is the cell **background**, not a coloured character, so ground reads as solid areas and the glyph stays free for what stands on it — grass, water **and forest** are plain spaces, and a flower is the only thing still written on the ground. The sixteen colour fallback has no shades to spare, so the meadow takes light green and the wood dark green: with no glyph left to tell them apart, the two colours carry it alone. Each terrain has four shades picked by hashing the tile coordinates: one flat colour looks like paint, and a shade redrawn at random every frame would make the map shimmer. The hash must avalanche — the first attempt used `crc32`, which is linear, so shades repeated every four tiles and wove visible diagonal stripes across the meadow (`testTheGrainRepeatsNoVisiblePattern` guards it).
 
-True colour is not universal, so `TilePalette::detect()` reads `COLORTERM` and falls back to sixteen ANSI colours without pretending to have shades. `docker-compose.yml` forwards `TERM` and `COLORTERM` from the host: without that the container advertises nothing and the fallback is all you ever get.
+**`COLORTERM` is inherited, so it lies in both directions.** It describes the terminal that started the shell and not the one drawing the frame: exported from a profile, carried across an ssh or nested in a tmux, it speaks for something else entirely. A table of terminals to disbelieve was tried and was worse than the problem — it held Terminal.app on the grounds that it has no 24 bit colour, and measured on a real one, it has. `--colours` settles it by hand instead, and nothing is judged on its name. `docker-compose.yml` forwards `TERM` and `COLORTERM` from the host: without that the container advertises nothing.
+
+**There is deliberately no 256 colour rung, and it was tried.** The xterm cube steps each channel through 0, 95, 135, 175, 215, 255, and this palette sits in the first gap: three of the four meadow greens land on `#5f5f5f`, which is a *grey*, all four greens of the wood collapse onto one entry, and the thicket and the bramble both come out pure black. That is not a coarser picture — the meadow stops meaning meadow, which is worse than the flat sixteen, where at least green stays green.
+
+The sixteen colour path had a bug worth remembering: `pixel()` read the *background* of the cell, and a flower is a magenta character on a green background. Every flower, foxglove and bramble therefore came back the exact green of the meadow — four thousand a map, gone into the grass. A tile is half a cell and has one colour, so what is *there* has to win over what it stands on.
 
 Renderers are swappable through `MapRenderInterface`. Tests use php-tui's own doubles — `DummyBackend`, `StringWriter`, `TestRawMode`, `SizeFromEnvVarProvider` — so frames render headlessly and can be asserted as strings (see `tests/Map/Render/TuiRenderTest.php`).
 
@@ -175,7 +244,7 @@ Renderers are swappable through `MapRenderInterface`. Tests use php-tui's own do
 
 Entry: `console` → `ApplicationConsole` (single-command Symfony app) → `Command\ApplicationCommand` → `GameRunner`.
 
-`GameRunner` owns the loop and all terminal-facing services (logger, renderer, input, memory). Each iteration: drain input → handle keys → `advance()`. Key bindings live in one `match` in `pumpInput()`; each handler returns whether a redraw is needed. `World::update()` self-throttles to 15 updates/second and returns `false` when it skipped, so the frame is only redrawn on a real tick.
+`GameRunner` owns the loop and all screen-facing services (logger, renderer, input, memory). It holds a `GameRenderInterface` and an `InputControllerInterface` rather than either implementation, so `--window` is a choice made once in `execute()` and the loop below it is unchanged. Each iteration: drain input → handle keys → `advance()`. Key bindings live in one `match` in `pumpInput()`; each handler returns whether a redraw is needed. `World::update()` self-throttles to 15 updates/second and returns `false` when it skipped, so the frame is only redrawn on a real tick.
 
 `Runtime\TimeControl` is the single source of truth for paused/speed/time-machine, shared by the loop and the control bar so neither has to reach into the other. `advance()` computes nothing while the time machine is on — the world on screen is a restored snapshot.
 
@@ -231,10 +300,14 @@ Serialization is the sharp edge of this codebase. Anything added to `World` or a
 
 ## Tests
 
-`make test` — 163 tests covering map queries and bounds, cat behaviour end-to-end (walks, eats, turns the flower to grass), snapshot round-trips, headless frame rendering, and the audio (oscillators, mixing, loop length, the feeding of the device against a fake output). `tests/Map/Render/RecordingBackend.php` keeps whole cells rather than just their characters: php-tui's own DummyBackend throws the styles away, which said enough while the map spoke through glyphs and says nothing now that a tile is a colour. The SDL test skips itself when the library is absent, which is the normal outcome in the container. `tests/WorldFactory.php` builds worlds from ASCII rows so nothing depends on the random provider.
+`make test` — 201 tests covering map queries and bounds, cat behaviour end-to-end (walks, eats, turns the flower to grass), snapshot round-trips, headless frame rendering, and the audio (oscillators, mixing, loop length, the feeding of the device against a fake output). `tests/Map/Render/RecordingBackend.php` keeps whole cells rather than just their characters: php-tui's own DummyBackend throws the styles away, which said enough while the map spoke through glyphs and says nothing now that a tile is a colour. The SDL test skips itself when the library is absent, which is the normal outcome in the container. `tests/WorldFactory.php` builds worlds from ASCII rows so nothing depends on the random provider.
+
+The window has the same kind of seam: `SdlRender::compose()` builds the three surfaces of a frame into `Pixels` with no display involved, so the layout, the camera arithmetic and the isometric lattice are all asserted headlessly. `SdlInput::keyFor()` is public for the same reason — the class went unloaded by any test until its private constants collided with the interface's public ones and the game died on the first `--window`. A class nothing touches is a class nothing checks.
 
 `phpunit.xml.dist` fails on warnings, notices and deprecations, but `ignoreIndirectDeprecations` keeps vendor deprecations from failing the suite.
 
 ## Leftovers
+
+`demo/relief.php` is a throwaway sketch of the map in 2.5D, printed once to the normal screen, loaded by nothing and meant to be argued with or deleted. Its heights are *invented* from the terrain type, which is the argument for one day keeping the elevation field `TerrainMapProvider` already cuts the terrain out of and then throws away: read from it, no lake would sit on a hilltop, because being low is what made it a lake.
 
 `test*.php` and `testhorsia.php` at the repo root, `.tt.txt.swp`, and `10-powerline-symbols.conf` are pre-existing scratch files, unrelated to the app. `dev.sh` and `dev/` implement a watch-and-restart loop that assumes Linux (`inotifywait`) and a container name that no longer exists.
