@@ -28,8 +28,19 @@ class TerrainMapProvider implements MapProviderInterface
     /** Share of the map covered by water, as lakes in the low ground. */
     public const WATER_SHARE = 0.18;
 
-    /** Share of the map covered by forest, on the high ground. */
+    /**
+     * Share of the map that is wooded, on the high ground. Split between open
+     * forest and the thicket at its heart — the contract is the total, since
+     * both are wood.
+     */
     public const FOREST_SHARE = 0.22;
+
+    /**
+     * Share of the map that is dense thicket, taken from the very top of the
+     * elevation band. A wood therefore closes in towards its middle instead
+     * of being uniformly thick, which is what a wood does.
+     */
+    public const THICKET_SHARE = 0.06;
 
     /** Share of the *grass* that blooms. The cat has to find food easily. */
     public const FLOWER_SHARE = 0.07;
@@ -96,8 +107,12 @@ class TerrainMapProvider implements MapProviderInterface
         $bloom = $this->field();
         $ground = $this->field();
 
-        $levels = $this->quantiles($elevation, [self::WATER_SHARE, 1 - self::FOREST_SHARE]);
-        [$waterLevel, $forestLevel] = $levels;
+        $levels = $this->quantiles($elevation, [
+            self::WATER_SHARE,
+            1 - self::FOREST_SHARE,
+            1 - self::THICKET_SHARE,
+        ]);
+        [$waterLevel, $forestLevel, $thicketLevel] = $levels;
 
         $tiles = [];
         $grassBloom = [];
@@ -108,6 +123,7 @@ class TerrainMapProvider implements MapProviderInterface
 
                 $tiles[$y][$x] = match (true) {
                     $height <= $waterLevel => MapBuilder::EAU,
+                    $height >= $thicketLevel => MapBuilder::FOURRE,
                     $height >= $forestLevel => MapBuilder::ARBRE,
                     default => MapBuilder::HERBE,
                 };

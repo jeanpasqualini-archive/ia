@@ -48,6 +48,9 @@ class TilePalette
     private const SHADES = [
         MapBuilder::HERBE => ['#3f6b36', '#48783d', '#375f30', '#436f39'],
         MapBuilder::ARBRE => ['#23461e', '#1d3c19', '#274c21', '#204219'],
+        // Deeper and colder than open forest, so the heart of a wood reads as
+        // somewhere one does not walk through lightly.
+        MapBuilder::FOURRE => ['#12291a', '#0e2215', '#163020', '#102616'],
         MapBuilder::EAU => ['#1f4f7a', '#265a8a', '#1a4468', '#22537f'],
         // Nearly black: a hole is an absence, and it should read as one next
         // to ground that is merely dark.
@@ -131,7 +134,8 @@ class TilePalette
             // row. mb_strwidth answers 1 for it, so the frame width test never
             // saw it: Unicode says narrow, the font substitution says
             // otherwise. A canopy is better read as a dark mass anyway.
-            MapBuilder::HERBE, MapBuilder::EAU, MapBuilder::ARBRE, MapBuilder::TROU => ' ',
+            MapBuilder::HERBE, MapBuilder::EAU, MapBuilder::ARBRE,
+            MapBuilder::TROU, MapBuilder::FOURRE => ' ',
             MapBuilder::FLEUR => '✿',
             MapBuilder::DIGITALE => '❀',
             MapBuilder::RONCE => '×',
@@ -219,7 +223,8 @@ class TilePalette
         return match ($tile) {
             // Nothing is drawn on top of these, so they carry a background
             // and no foreground at all.
-            MapBuilder::HERBE, MapBuilder::EAU, MapBuilder::ARBRE, MapBuilder::TROU => Style::default()
+            MapBuilder::HERBE, MapBuilder::EAU, MapBuilder::ARBRE,
+            MapBuilder::TROU, MapBuilder::FOURRE => Style::default()
                 ->bg($this->shade($tile, $variant)),
             MapBuilder::DIGITALE => Style::default()
                 ->bg($this->shade(MapBuilder::HERBE, $variant))
@@ -259,6 +264,7 @@ class TilePalette
             MapBuilder::ARBRE => Style::default()->bg(AnsiColor::Green)->fg(AnsiColor::Green),
             MapBuilder::EAU => Style::default()->bg(AnsiColor::Blue)->fg(AnsiColor::Blue),
             MapBuilder::TROU => Style::default()->bg(AnsiColor::Black)->fg(AnsiColor::Black),
+            MapBuilder::FOURRE => Style::default()->bg(AnsiColor::DarkGray)->fg(AnsiColor::DarkGray),
             MapBuilder::RONCE => Style::default()->bg(AnsiColor::LightGreen)->fg(AnsiColor::Black),
             MapBuilder::FLEUR => Style::default()->bg(AnsiColor::LightGreen)->fg(AnsiColor::Magenta),
             MapBuilder::DIGITALE => Style::default()->bg(AnsiColor::LightGreen)->fg(AnsiColor::LightCyan),

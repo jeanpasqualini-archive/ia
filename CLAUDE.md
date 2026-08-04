@@ -191,11 +191,13 @@ Diagonal steps cost 14 against 10 for straight ones. Charged equally, a sideways
 
 **Map is layered.** `MapBuilder` holds named layers (`map`, `player`) flattened into a final layer; renderers only see `getFinalMap()`. Tiles are single chars: `X` grass, `Y` tree, `E` water, `F` flower. Providers implement `MapProviderInterface`: `TerrainMapProvider` and `FileMapProvider` (`app/map/terre.txt`, mapping `░✿↟∼` back to `XFYE`).
 
+**A thicket blocks the view, and nothing about the view says so.** `FOURRE` costs six to push through against three for open forest, and since sight is spent in cost rather than in distance, that one number does both jobs: a cat walks round a thicket, and sees barely into one. Measured with a range of twenty five: twenty tiles across a meadow, nine under trees, five in a thicket. Writing an opacity anywhere would have been a second mechanism saying the same thing.
+
 ### Terrain generation
 
 `TerrainMapProvider` builds two fractal value-noise fields — elevation and bloom — and cuts the terrain out of them: low ground is water, high ground is forest, the rest grass, and grass blooms where the second field peaks. Continuous fields are what make regions contiguous, which the previous per-cell random draw could never produce.
 
-The cuts are **quantiles, not fixed thresholds**. Asking for "the lowest 18%" yields the same coverage on every seed; a fixed cut on a normalized field swung between 19% and 37% water depending on how the noise fell. Terrain shares (`WATER_SHARE`, `FOREST_SHARE`, `FLOWER_SHARE`) are therefore a contract, asserted in `TerrainMapProviderTest`. Flowers are ranked among grass cells only, so their share does not shrink on a lake-heavy map — the cat always has food.
+The cuts are **quantiles, not fixed thresholds**. Asking for "the lowest 18%" yields the same coverage on every seed; a fixed cut on a normalized field swung between 19% and 37% water depending on how the noise fell. Terrain shares (`WATER_SHARE`, `FOREST_SHARE`, `FLOWER_SHARE`) are therefore a contract, asserted in `TerrainMapProviderTest`. `FOREST_SHARE` is the share of the map that is *wooded*: the thicket is taken out of the top of that band rather than added beside it, so a wood closes in towards its middle. Flowers are ranked among grass cells only, so their share does not shrink on a lake-heavy map — the cat always has food.
 
 Generation is seeded through `Random\Randomizer` (no global `mt_srand`), so `--seed N` replays a map exactly and the tests can assert on shapes. Coherence itself is tested by measuring clustering — the fraction of water tiles touching another water tile — against the same tiles shuffled.
 
@@ -207,7 +209,7 @@ Serialization is the sharp edge of this codebase. Anything added to `World` or a
 
 ## Tests
 
-`make test` — 160 tests covering map queries and bounds, cat behaviour end-to-end (walks, eats, turns the flower to grass), snapshot round-trips, headless frame rendering, and the audio (oscillators, mixing, loop length, the feeding of the device against a fake output). The SDL test skips itself when the library is absent, which is the normal outcome in the container. `tests/WorldFactory.php` builds worlds from ASCII rows so nothing depends on the random provider.
+`make test` — 161 tests covering map queries and bounds, cat behaviour end-to-end (walks, eats, turns the flower to grass), snapshot round-trips, headless frame rendering, and the audio (oscillators, mixing, loop length, the feeding of the device against a fake output). The SDL test skips itself when the library is absent, which is the normal outcome in the container. `tests/WorldFactory.php` builds worlds from ASCII rows so nothing depends on the random provider.
 
 `phpunit.xml.dist` fails on warnings, notices and deprecations, but `ignoreIndirectDeprecations` keeps vendor deprecations from failing the suite.
 

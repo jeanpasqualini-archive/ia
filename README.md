@@ -52,6 +52,11 @@ seul coup, bien plus vite qu'une griffure, en blâmant la plante et non
 l'endroit où elle poussait. Ensuite il fait le tour. Sauf s'il n'a rien d'autre
 à manger, auquel cas il la mange quand même.
 
+Au cœur des bois, la végétation se referme en fourrés. On les traverse deux
+fois moins vite qu'un sous-bois clair — et comme la vue se paie en coût de
+déplacement, un chat n'y voit presque rien : vingt cases en prairie, neuf sous
+les arbres, cinq dans un fourré.
+
 La prairie s'effondre par endroits en petits cratères. Un trou ne coûte rien à
 traverser — sinon le chat les éviterait sans jamais y tomber — mais il fait
 quatre fois plus mal qu'une ronce, et le chat finit par le craindre quatre fois

@@ -40,6 +40,17 @@ class MapBuilder
     public const TROU = 'T';
 
     /**
+     * Dense thicket: the heart of a wood, where the undergrowth closes in.
+     *
+     * It costs six to push through against three for open forest, and that
+     * one number does two things at once. It makes a cat walk round rather
+     * than through — and, because sight is spent in cost rather than in
+     * distance, it also means a cat sees barely four tiles into one. The
+     * thicket blocks the view without anything ever mentioning the view.
+     */
+    public const FOURRE = 'U';
+
+    /**
      * What a cat will walk to when hungry. Both look like a meal; only one
      * is.
      *
@@ -52,7 +63,8 @@ class MapBuilder
 
     /** @var list<string> */
     private const ALLOWED_ITEMS = [
-        self::HERBE, self::ARBRE, self::EAU, self::FLEUR, self::RONCE, self::DIGITALE, self::TROU,
+        self::HERBE, self::ARBRE, self::EAU, self::FLEUR,
+        self::RONCE, self::DIGITALE, self::TROU, self::FOURRE,
     ];
 
     /**
@@ -93,6 +105,7 @@ class MapBuilder
         self::RONCE => 1,
         self::DIGITALE => 1,
         self::ARBRE => 3,
+        self::FOURRE => 6,
         // One, like grass, and for the same reason brambles are one: this was
         // three at first — climbing out ought to cost something — and the
         // pathfinder then routed round every pit from birth. Six thousand

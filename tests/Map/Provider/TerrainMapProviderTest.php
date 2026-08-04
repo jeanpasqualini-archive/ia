@@ -59,7 +59,19 @@ final class TerrainMapProviderTest extends TestCase
             $shares = $this->shares((new TerrainMapProvider(20, 60, $seed))->getMap());
 
             self::assertEqualsWithDelta(TerrainMapProvider::WATER_SHARE, $shares[MapBuilder::EAU], 0.02);
-            self::assertEqualsWithDelta(TerrainMapProvider::FOREST_SHARE, $shares[MapBuilder::ARBRE], 0.02);
+
+            // Both are wood, so the contract is the total: the thicket is
+            // taken out of the forest rather than added beside it.
+            self::assertEqualsWithDelta(
+                TerrainMapProvider::FOREST_SHARE,
+                $shares[MapBuilder::ARBRE] + $shares[MapBuilder::FOURRE],
+                0.02
+            );
+            self::assertEqualsWithDelta(
+                TerrainMapProvider::THICKET_SHARE,
+                $shares[MapBuilder::FOURRE],
+                0.02
+            );
             self::assertGreaterThan(0.01, $shares[MapBuilder::FLEUR], 'il reste des fleurs a manger');
         }
     }

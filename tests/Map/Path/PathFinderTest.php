@@ -286,6 +286,26 @@ final class PathFinderTest extends TestCase
         return $count;
     }
 
+    /**
+     * A thicket blocks the view, and nothing about the view says so.
+     *
+     * Sight is spent in cost rather than in distance, so ground that is twice
+     * as hard to push through is seen half as far into. Writing an opacity
+     * anywhere would have been a second mechanism saying the same thing.
+     */
+    public function testAThicketIsSeenIntoLessFarThanOpenForest(): void
+    {
+        $from = new Point(0, 0);
+
+        $open = $this->finder(['XYYYYYYYYY'])->costsWithin($from, 12);
+        $dense = $this->finder(['XUUUUUUUUU'])->costsWithin($from, 12);
+        $meadow = $this->finder(['XXXXXXXXXX'])->costsWithin($from, 12);
+
+        self::assertGreaterThan(count($open), count($meadow), 'on voit loin en prairie');
+        self::assertGreaterThan(count($dense), count($open), 'moins loin sous les arbres');
+        self::assertLessThan(4, count($dense), 'et a peine dans un fourre');
+    }
+
     public function testTheRangeBoundsAPlainRouteToo(): void
     {
         $finder = $this->finder(['XXXXXXXXXX']);
