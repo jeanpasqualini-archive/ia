@@ -28,4 +28,12 @@ interface InputControllerInterface
      * Last key pressed, or null when nothing was typed during this tick.
      */
     public function getKey(): ?string;
+
+    /**
+     * Last mouse gesture, or null when the mouse did not do anything worth
+     * reporting. Only the last one of a frame survives: a drag emits an event
+     * per cell crossed, and acting on each of them in turn would move the
+     * view by the same total anyway.
+     */
+    public function getMouse(): ?MouseInput;
 }

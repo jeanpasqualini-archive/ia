@@ -90,6 +90,31 @@ final class CameraTest extends TestCase
         self::assertSame($middleY, $camera->y() + intdiv(16 * $camera->scale(), 2));
     }
 
+    /**
+     * The sign is the whole point of dragging and the easiest thing to get
+     * backwards: the ground follows the hand, so pulling to the right brings
+     * in what was on the left.
+     */
+    public function testDraggingPullsTheGroundWithTheCursor(): void
+    {
+        $camera = new Camera();
+        $camera->clamp(1000, 1000, 32, 17);
+        $camera->pan(5, 5);
+        $camera->clamp(1000, 1000, 32, 17);
+
+        $x = $camera->x();
+        $camera->dragBy(3, 0);
+
+        self::assertSame($x - 3, $camera->x(), 'tirer a droite montre ce qui etait a gauche');
+
+        $camera->zoomOut();
+        $camera->clamp(1000, 1000, 32, 17);
+        $y = $camera->y();
+        $camera->dragBy(0, 3);
+
+        self::assertSame($y - 6, $camera->y(), 'une cellule vaut deux tuiles a 1:2');
+    }
+
     public function testTheZoomStopsAtBothEnds(): void
     {
         $camera = new Camera();

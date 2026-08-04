@@ -22,6 +22,7 @@ barre de contrôle du temps en bas.
 Touches :
  - `espace` lecture/pause, `n` avance d'un tick, `-`/`+` vitesse
  - `flèches` déplacent la vue, `z`/`Z` zoom et dézoom
+ - à la souris : glisser la carte pour la déplacer, molette pour zoomer
  - `t` time machine, puis `p`/`a` pour naviguer dans les snapshots
  - `tab` ou `1`..`9` pour changer d'onglet IA
  - `r` nouvelle map, `x` persiste la mémoire, `m` coupe le son, `q` quitte
@@ -43,6 +44,10 @@ que ce qu'on en voit. Les flèches déplacent la vue pendant que les IA jouent,
 visible à tous les niveaux de zoom, même quand une cellule représente
 soixante-quatre tuiles. Chaque chat ne voit qu'à vingt-cinq cases autour de
 lui : quand il n'a pas de fleur en vue, il part explorer.
+
+La souris déplace la carte au glisser et zoome à la molette. Elle confisque en
+échange la sélection de texte du terminal — pour copier une ligne du journal il
+faut alors Maj ou Alt, ou lancer avec `--no-mouse`.
 
 Voici une capture
 

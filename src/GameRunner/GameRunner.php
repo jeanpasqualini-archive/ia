@@ -9,6 +9,8 @@ use Audio\SdlAudioOutput;
 use Audio\SoundBoard;
 use Audio\SoundEffect;
 use InputController\InputControllerInterface;
+use InputController\MouseAction;
+use InputController\MouseInput;
 use InputController\TerminalInputController;
 use Logger\FileLogger;
 use Logger\MultipleLogger;
@@ -78,6 +80,16 @@ class GameRunner
 
     private bool $sound = true;
 
+    private bool $mouse = true;
+
+    /**
+     * Where a drag started, in screen columns and rows. Null when no button
+     * is held.
+     *
+     * @var array{int, int}|null
+     */
+    private ?array $anchor = null;
+
     /**
      * Flowers left on the map at the end of the last frame. Eating is the
      * only thing that removes one, so a drop is how the runner hears about a
@@ -143,6 +155,10 @@ class GameRunner
         if (!empty($options['mute'])) {
             $this->sound = false;
         }
+
+        if (!empty($options['no-mouse'])) {
+            $this->mouse = false;
+        }
     }
 
     public function execute(): int
@@ -170,7 +186,8 @@ class GameRunner
             $this->memoryManager,
             $this->timeControl,
             audio: $this->audio,
-            camera: $this->camera
+            camera: $this->camera,
+            mouse: $this->mouse
         );
 
         try {
@@ -269,13 +286,24 @@ class GameRunner
     {
         $this->input->update();
 
+        // The mouse is read first and its verdict kept: a scroll and a key
+        // can land in the same frame, and the later match must not overwrite
+        // the redraw the wheel just asked for.
+        $redraw = $this->handleMouse($this->input->getMouse());
         $key = $this->input->getKey();
 
-        if (null === $key) {
-            return;
+        if (null !== $key) {
+            $redraw = $this->handleKey($key) || $redraw;
         }
 
-        $redraw = match ($key) {
+        if ($redraw) {
+            $this->draw();
+        }
+    }
+
+    private function handleKey(string $key): bool
+    {
+        return match ($key) {
             'q' => $this->quit(),
             ' ' => $this->togglePause(),
             'n' => $this->requestStep(),
@@ -299,10 +327,60 @@ class GameRunner
             's' => $this->togglePause(false),
             default => $this->selectTab($key),
         };
+    }
 
-        if ($redraw) {
-            $this->draw();
+    /**
+     * The map is dragged, not clicked: the ground follows the cursor, which is
+     * the gesture every map in the world uses. The wheel zooms, and both are
+     * ignored outside the map so that scrolling over the log does not move
+     * the view.
+     */
+    private function handleMouse(?MouseInput $mouse): bool
+    {
+        if (null === $mouse) {
+            return false;
         }
+
+        if (MouseAction::Release === $mouse->action) {
+            $this->anchor = null;
+
+            return false;
+        }
+
+        if (!$this->render->isOverMap($mouse->column, $mouse->row)) {
+            return false;
+        }
+
+        return match ($mouse->action) {
+            MouseAction::ScrollUp => $this->zoom(closer: true),
+            MouseAction::ScrollDown => $this->zoom(closer: false),
+            MouseAction::Press, MouseAction::Drag => $this->dragView($mouse),
+            default => false,
+        };
+    }
+
+    private function dragView(MouseInput $mouse): bool
+    {
+        if (null === $this->anchor) {
+            $this->anchor = [$mouse->column, $mouse->row];
+
+            return false;
+        }
+
+        [$columns, $rows] = $this->anchor;
+        [$cellsX, $cellsY] = $this->render->toCells($mouse->column - $columns, $mouse->row - $rows);
+
+        // A tile is two columns wide, so a one column drag is worth nothing
+        // yet. The anchor stays where it is until the movement adds up,
+        // otherwise a slow horizontal drag would round to zero for ever.
+        if (0 === $cellsX && 0 === $cellsY) {
+            return false;
+        }
+
+        $this->anchor = [$mouse->column, $mouse->row];
+        $this->camera->dragBy($cellsX, $cellsY);
+
+        return true;
     }
 
     private function quit(): bool

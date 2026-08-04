@@ -18,4 +18,9 @@ class NullInputController implements InputControllerInterface
     {
         return null;
     }
+
+    public function getMouse(): ?MouseInput
+    {
+        return null;
+    }
 }

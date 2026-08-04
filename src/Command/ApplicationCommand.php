@@ -24,6 +24,7 @@ class ApplicationCommand extends Command
             ->addOption('map', null, InputOption::VALUE_REQUIRED, 'charge une map depuis un fichier')
             ->addOption('seed', null, InputOption::VALUE_REQUIRED, 'graine du terrain, pour rejouer la meme carte')
             ->addOption('mute', null, InputOption::VALUE_NONE, 'demarre sans son (la touche m le fait aussi)')
+            ->addOption('no-mouse', null, InputOption::VALUE_NONE, 'desactive la souris, et rend la selection de texte au terminal')
             ->addOption('flash-name', null, InputOption::VALUE_REQUIRED, 'nom du dump memoire', 'game')
             ->addOption('log', null, InputOption::VALUE_REQUIRED, 'fichier de log', '/tmp/log/dev.log');
     }

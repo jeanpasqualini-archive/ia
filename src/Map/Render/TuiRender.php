@@ -74,6 +74,7 @@ class TuiRender implements MapRenderInterface
         private ?TilePalette $palette = null,
         private ?SoundBoard $audio = null,
         private Camera $camera = new Camera(),
+        private bool $mouse = true,
     ) {
         $this->palette ??= TilePalette::detect();
         $this->bufferLog = new BufferLogger();
@@ -96,6 +97,13 @@ class TuiRender implements MapRenderInterface
         $this->terminal->execute(Actions::alternateScreenEnable());
         $this->terminal->enableRawMode();
 
+        // Capture is what lets the map be dragged, and it takes the terminal's
+        // own selection with it: copying a line of the log then needs shift or
+        // alt. That is why it can be turned off — see --no-mouse.
+        if ($this->mouse) {
+            $this->terminal->execute(Actions::enableMouseCapture());
+        }
+
         $this->display->clear();
         $this->started = true;
     }
@@ -107,6 +115,11 @@ class TuiRender implements MapRenderInterface
         }
 
         $this->started = false;
+
+        if ($this->mouse) {
+            $this->terminal->execute(Actions::disableMouseCapture());
+        }
+
         $this->terminal->disableRawMode();
         $this->terminal->execute(Actions::alternateScreenDisable());
         $this->terminal->execute(Actions::cursorShow());
@@ -152,6 +165,35 @@ class TuiRender implements MapRenderInterface
             'x' => max(10, intdiv($cols - self::SIDEBAR_WIDTH - 2, TilePalette::TILE_WIDTH)),
             'y' => max(10, $lines - self::LOG_HEIGHT - self::CONTROL_HEIGHT - 2),
         ];
+    }
+
+    /**
+     * Whether a screen position falls inside the map, border excluded.
+     *
+     * The geometry lives here because the renderer is what decided it. The
+     * loop only needs the answer, not the layout.
+     */
+    public function isOverMap(int $column, int $row): bool
+    {
+        $view = $this->getSize();
+
+        return $column >= 1
+            && $row >= 1
+            && $column <= $view['x'] * TilePalette::TILE_WIDTH
+            && $row <= $view['y'];
+    }
+
+    /**
+     * Screen columns and rows turned into cells. A tile spans two columns, so
+     * a one column drag is worth nothing — the caller keeps its anchor until
+     * the movement adds up, otherwise a slow horizontal drag would round to
+     * zero for ever and feel stuck.
+     *
+     * @return array{int, int}
+     */
+    public function toCells(int $columns, int $rows): array
+    {
+        return [intdiv($columns, TilePalette::TILE_WIDTH), $rows];
     }
 
     public function render($map): void

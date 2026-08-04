@@ -92,8 +92,31 @@ final class Camera
      */
     public function pan(int $dx, int $dy): void
     {
-        $this->x += $dx * self::PAN_CELLS * $this->scale();
-        $this->y += $dy * self::PAN_CELLS * $this->scale();
+        $this->slide($dx * self::PAN_CELLS, $dy * self::PAN_CELLS);
+    }
+
+    /**
+     * Move by a number of cells rather than by keyboard steps, which is what
+     * dragging needs: the ground has to travel exactly as far as the cursor
+     * did, or it slides out from under it.
+     */
+    public function slide(int $cellsX, int $cellsY): void
+    {
+        $this->x += $cellsX * $this->scale();
+        $this->y += $cellsY * $this->scale();
+    }
+
+    /**
+     * Follow a cursor that has moved by so many cells.
+     *
+     * The sign is the whole point and the easiest thing to get backwards:
+     * dragging to the right pulls the ground along with the hand, so what
+     * comes into view is what was on the *left*, and the origin moves the
+     * other way.
+     */
+    public function dragBy(int $cellsX, int $cellsY): void
+    {
+        $this->slide(-$cellsX, -$cellsY);
     }
 
     /**

@@ -311,6 +311,84 @@ final class TuiRenderTest extends TestCase
     }
 
     /**
+     * The mouse reports screen positions; the renderer is what knows the
+     * layout, so it is what says whether a click landed on the map or on the
+     * log pane underneath it.
+     */
+    public function testTheMapAreaStopsAtItsBorder(): void
+    {
+        $render = $this->render();
+
+        self::assertFalse($render->isOverMap(0, 5), 'la bordure gauche');
+        self::assertFalse($render->isOverMap(5, 0), 'la bordure haute');
+        self::assertTrue($render->isOverMap(1, 1), 'le premier coin utile');
+
+        // Thirty two tiles of two columns, seventeen rows.
+        self::assertTrue($render->isOverMap(64, 17));
+        self::assertFalse($render->isOverMap(65, 17), 'le panneau lateral');
+        self::assertFalse($render->isOverMap(64, 18), 'le journal');
+    }
+
+    /**
+     * Capture has to be given back. Left on, the terminal keeps swallowing
+     * clicks after the game has exited and the shell becomes unusable — the
+     * same class of damage as leaving the tty in raw mode.
+     */
+    public function testMouseCaptureIsTakenAndGivenBack(): void
+    {
+        $writer = StringWriter::new();
+        $render = $this->renderWriting($writer, mouse: true);
+
+        $render->init();
+
+        // Button-event tracking: the mode that reports dragging.
+        self::assertStringContainsString('?1002h', $writer->toString(), 'la capture est prise');
+
+        $render->close();
+
+        self::assertStringContainsString('?1002l', $writer->toString(), 'et rendue');
+    }
+
+    public function testTheMouseCanBeLeftAlone(): void
+    {
+        $writer = StringWriter::new();
+        $render = $this->renderWriting($writer, mouse: false);
+
+        $render->init();
+        $render->close();
+
+        // --no-mouse exists so the terminal keeps its own text selection.
+        self::assertStringNotContainsString('?1002h', $writer->toString());
+    }
+
+    private function renderWriting(StringWriter $writer, bool $mouse): TuiRender
+    {
+        return new TuiRender(
+            Terminal::new(
+                AnsiPainter::new($writer),
+                SizeFromEnvVarProvider::new(),
+                rawMode: new TestRawMode(),
+            ),
+            new MultipleLogger(),
+            new WorldContainer(),
+            new MemoryManager('test'),
+            new TimeControl(),
+            $this->backend,
+            new MemoryUsage(),
+            mouse: $mouse,
+        );
+    }
+
+    public function testScreenColumnsBecomeCellsTwoAtATime(): void
+    {
+        $render = $this->render();
+
+        self::assertSame([0, 3], $render->toCells(1, 3), 'une colonne ne vaut pas encore une tuile');
+        self::assertSame([1, 0], $render->toCells(2, 0));
+        self::assertSame([-2, -1], $render->toCells(-4, -1));
+    }
+
+    /**
      * @return array<int, array<int, string>>
      */
     private function emptyMap(int $width, int $height): array

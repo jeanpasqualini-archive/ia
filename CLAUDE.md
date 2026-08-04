@@ -17,7 +17,7 @@ make shell    # shell in the container
 make help     # all targets
 ```
 
-Keys: `space` play/pause, `n` one tick, `-`/`+` speed, **arrows to move the view, `z`/`Z` to zoom in and out**, `t` time machine then `p`/`a` to browse snapshots, `tab` or `1`..`9` to switch AI panel, `r` new map, `x` persist memory, `m` mute, `q` quit (`b`/`s` are kept as pause/play aliases). The game starts paused; `--play` starts it running.
+Keys: `space` play/pause, `n` one tick, `-`/`+` speed, **arrows to move the view, `z`/`Z` to zoom in and out, or drag the map with the mouse and zoom with the wheel**, `t` time machine then `p`/`a` to browse snapshots, `tab` or `1`..`9` to switch AI panel, `r` new map, `x` persist memory, `m` mute, `q` quit (`b`/`s` are kept as pause/play aliases). The game starts paused; `--play` starts it running.
 
 In raw mode Ctrl+C is delivered as a key event, not a signal — quit with `q`. If the process is killed from outside, the tty is left raw: run `reset`.
 
@@ -66,6 +66,12 @@ Zooming **holds the middle of the view still**; anchored on the corner, whatever
 **A cell is sampled, not averaged.** Reading every tile of every block would be sixty four lookups a cell at 1:8, some thirty thousand a frame, which costs more than the simulation it is showing; terrain is contiguous enough that one tile speaks for its neighbours. Sampling loses anything smaller than a block — a lone flower usually disappears at 1:4 — with one exception: **players are drawn from their own positions afterwards, so a cat is never sampled away.** Losing sight of a cat is precisely what one zooms out to avoid. Shades are hashed from world coordinates rather than screen ones, so the grain of the ground stays put while the view slides over it.
 
 Cats spawn at quarter and three-quarter of the map rather than in the first screen: two cats a few tiles apart would compete for the same flowers and the rest of the world would never be walked on.
+
+**The mouse drags the map and the wheel zooms**, which is the gesture every map uses. php-tui parses the events; the work was deciding where they belong. The renderer owns the geometry — `isOverMap()` and `toCells()` — because it is what decided the layout, and the loop owns the gesture, because a drag is state across frames. `Camera::dragBy()` negates the movement: the ground follows the hand, so pulling right brings in what was on the left, and that sign is the easiest thing in the whole feature to get backwards.
+
+A tile is two columns wide, so a one column drag is worth nothing yet; the anchor stays put until the movement adds up, otherwise a slow horizontal drag would round to zero for ever. Only the last mouse event of a frame is kept — capture is enabled with any-motion tracking, so a mouse merely crossing the screen emits an event per cell.
+
+**Capture has to be given back on the way out.** Left on, the terminal keeps swallowing clicks after the game exits — the same class of damage as leaving the tty in raw mode, and `testMouseCaptureIsTakenAndGivenBack` is what stops it happening again. It also takes the terminal's own text selection with it, which is why `--no-mouse` exists: with it, copying a line out of the log needs no modifier.
 
 ## Memory and exit 137
 
@@ -147,7 +153,7 @@ Serialization is the sharp edge of this codebase. Anything added to `World` or a
 
 ## Tests
 
-`make test` — 133 tests covering map queries and bounds, cat behaviour end-to-end (walks, eats, turns the flower to grass), snapshot round-trips, headless frame rendering, and the audio (oscillators, mixing, loop length, the feeding of the device against a fake output). The SDL test skips itself when the library is absent, which is the normal outcome in the container. `tests/WorldFactory.php` builds worlds from ASCII rows so nothing depends on the random provider.
+`make test` — 138 tests covering map queries and bounds, cat behaviour end-to-end (walks, eats, turns the flower to grass), snapshot round-trips, headless frame rendering, and the audio (oscillators, mixing, loop length, the feeding of the device against a fake output). The SDL test skips itself when the library is absent, which is the normal outcome in the container. `tests/WorldFactory.php` builds worlds from ASCII rows so nothing depends on the random provider.
 
 `phpunit.xml.dist` fails on warnings, notices and deprecations, but `ignoreIndirectDeprecations` keeps vendor deprecations from failing the suite.
 
