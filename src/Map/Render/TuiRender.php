@@ -262,7 +262,7 @@ class TuiRender implements GameRenderInterface
     }
 
     /**
-     * Whether a screen position falls on the "centre the view" button of the
+     * Whether a screen position falls on the "follow this cat" button of the
      * AI panel.
      *
      * Null until a frame has been drawn: the row is recorded while the panel
@@ -520,10 +520,18 @@ class TuiRender implements GameRenderInterface
         // Two rows down for the block border and the row of tabs above this
         // paragraph. Recorded here, where the line is actually placed.
         $this->focusRow = 2 + count($lines);
+        // The button follows rather than centring once, and says which of the
+        // two it is about to do. Centring stays on `c`: putting the cat back
+        // in the middle and leaving the view alone is what one wants while
+        // reading the map, and riding along is what one wants while watching
+        // an animal decide something.
+        $following = $this->camera->isFollowing();
         $lines[] = Line::fromSpans(
             Span::styled(
-                ' [ c : centrer la vue ] ',
-                Style::default()->fg(AnsiColor::Black)->bg(AnsiColor::Cyan)
+                $following ? ' [ l : ne plus suivre ] ' : ' [ l : suivre le chat ] ',
+                Style::default()
+                    ->fg(AnsiColor::Black)
+                    ->bg($following ? AnsiColor::LightGreen : AnsiColor::Cyan)
             )
         );
 

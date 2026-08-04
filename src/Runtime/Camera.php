@@ -44,6 +44,18 @@ final class Camera
 
     private int $cellsY = 0;
 
+    /**
+     * Whether the view is riding along with the selected cat.
+     *
+     * The state belongs here and not in the renderer because it is a way of
+     * looking, like the zoom and the origin — and like them it must stay out
+     * of `World`, which is serialized. *Who* is being followed is not stored
+     * at all: it is whichever cat the panel is describing, so switching tab
+     * moves the view to the new one and there is no second selection to keep
+     * in step with the first.
+     */
+    private bool $following = false;
+
     public function scale(): int
     {
         return self::SCALES[$this->level];
@@ -90,6 +102,17 @@ final class Camera
      * that is eight times as much ground, which is the point of being zoomed
      * out.
      */
+    public function isFollowing(): bool
+    {
+        return $this->following;
+    }
+
+    /** Answers what it turned into, so the caller can say so. */
+    public function toggleFollow(): bool
+    {
+        return $this->following = !$this->following;
+    }
+
     public function pan(int $dx, int $dy): void
     {
         $this->slide($dx * self::PAN_CELLS, $dy * self::PAN_CELLS);
@@ -100,8 +123,17 @@ final class Camera
      * dragging needs: the ground has to travel exactly as far as the cursor
      * did, or it slides out from under it.
      */
+    /**
+     * Moving the view by hand lets the cat go.
+     *
+     * Without this the drag fights the follow and loses: the view snaps back
+     * to the cat on the very next frame, which reads as the map being broken
+     * rather than as a mode being on. Asking to look somewhere else *is* the
+     * decision to stop following.
+     */
     public function slide(int $cellsX, int $cellsY): void
     {
+        $this->following = false;
         $this->x += $cellsX * $this->scale();
         $this->y += $cellsY * $this->scale();
     }

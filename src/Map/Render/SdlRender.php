@@ -117,6 +117,13 @@ final class SdlRender implements GameRenderInterface
     /** @var array<int, array<int, int>> floating cats, keyed [row][column] */
     private array $markers = [];
 
+    /**
+     * The follow button's box in cells, recorded while it is drawn.
+     *
+     * @var array{int, int, int, int}|null
+     */
+    private ?array $followButton = null;
+
     public function __construct(
         private MultipleLogger $logger,
         private WorldContainer $worldContainer,
@@ -427,10 +434,23 @@ final class SdlRender implements GameRenderInterface
         return [$columns, $rows];
     }
 
-    /** No button to press: the window has room to write the hint instead. */
+    /**
+     * Whether a click landed on the "follow this cat" button.
+     *
+     * Its box is recorded while the sidebar is drawn rather than worked out a
+     * second time from the layout — computing it twice is how a button ends up
+     * a few pixels away from itself, which the terminal learned once already.
+     * The loop hands over cells, so the box is kept in cells.
+     */
     public function isOverFocusButton(int $column, int $row): bool
     {
-        return false;
+        if (null === $this->followButton) {
+            return false;
+        }
+
+        [$left, $top, $right, $bottom] = $this->followButton;
+
+        return $column >= $left && $column <= $right && $row >= $top && $row <= $bottom;
     }
 
     /**
@@ -526,6 +546,24 @@ final class SdlRender implements GameRenderInterface
             BitmapFont::write($pixels, 12, $y, $line['text'], self::TONES[$line['tone']], self::TEXT);
             $y += self::LINE;
         }
+
+        // The button, above the memory panel and below whatever the cat is
+        // doing, so it does not move as goals come and go.
+        $following = $this->camera->isFollowing();
+        $label = $following ? ' l : ne plus suivre ' : ' l : suivre le chat ';
+        $buttonWidth = BitmapFont::widthOf($label, self::TEXT) + 8;
+        $buttonTop = $this->mapHeight - 24 - self::LINE * (count($this->dashboard->memory()) + 2);
+
+        $pixels->rect(12, $buttonTop, $buttonWidth, self::LINE + 6, $following ? 0xFF2F6B35 : 0xFF2C5F8F);
+        BitmapFont::write($pixels, 16, $buttonTop + 5, $label, 0xFFFFFFFF, self::TEXT);
+
+        // In cells, because that is what the loop hands back from the mouse.
+        $this->followButton = [
+            intdiv($this->mapWidth + 12, self::CELL),
+            intdiv($buttonTop, self::CELL),
+            intdiv($this->mapWidth + 12 + $buttonWidth, self::CELL),
+            intdiv($buttonTop + self::LINE + 6, self::CELL),
+        ];
 
         // The memory panel sits at the bottom, where it does not push the AI
         // about as the cat's goals come and go.

@@ -145,7 +145,19 @@ final class IsoView
                 }
 
                 $tile = $map[$worldY][$worldX] ?? MapBuilder::HERBE;
-                $this->ground($pixels, $screenX, $screenY, $diamond, $tile, $worldX, $worldY);
+
+                // The ground is what the tile *stands on*, never the tile's
+                // own colour: a flower is a plant in the meadow, so its
+                // diamond is grass and the bloom is what is drawn on it.
+                $this->ground(
+                    $pixels,
+                    $screenX,
+                    $screenY,
+                    $diamond,
+                    TilePalette::groundFor($tile),
+                    $worldX,
+                    $worldY
+                );
 
                 $cat = $cats[$worldX . ';' . $worldY] ?? null;
 

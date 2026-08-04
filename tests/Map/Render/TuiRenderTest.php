@@ -467,7 +467,7 @@ final class TuiRenderTest extends TestCase
         $drawn = null;
 
         foreach (explode("\n", $this->backend->toString()) as $index => $row) {
-            if (str_contains($row, 'centrer la vue')) {
+            if (str_contains($row, 'suivre le chat')) {
                 $drawn = $index;
 
                 break;

@@ -413,6 +413,7 @@ class GameRunner
             'z' => $this->zoom(closer: true),
             'Z' => $this->zoom(closer: false),
             'c' => $this->focusPlayer(),
+            'l' => $this->toggleFollow(),
             'v' => $this->render->toggleView(),
             // Ctrl+L, as everywhere else, plus a plain letter because in raw
             // mode a control character is not always what reaches us.
@@ -450,7 +451,7 @@ class GameRunner
         if (MouseAction::Press === $mouse->action
             && $this->render->isOverFocusButton($mouse->column, $mouse->row)
         ) {
-            return $this->focusPlayer();
+            return $this->toggleFollow();
         }
 
         if (!$this->render->isOverMap($mouse->column, $mouse->row)) {
@@ -568,6 +569,26 @@ class GameRunner
     private function repaint(): bool
     {
         $this->render->repaint();
+
+        return true;
+    }
+
+    /**
+     * Ride along with the selected cat, or stop.
+     *
+     * Centring once and following are different needs and both are kept: `c`
+     * puts the cat back in the middle and leaves the view where it is, which
+     * is what one wants while reading the map; this rides along, which is what
+     * one wants while watching an animal decide something. Moving the view by
+     * hand ends it — see `Camera::slide()`.
+     */
+    private function toggleFollow(): bool
+    {
+        if ($this->camera->toggleFollow()) {
+            $this->render->focusOnSelectedPlayer();
+        }
+
+        $this->audio->play(SoundEffect::Blip);
 
         return true;
     }
@@ -752,6 +773,13 @@ class GameRunner
     private function draw(): void
     {
         $this->lastDrawAt = microtime(true);
+
+        // Done here rather than inside a renderer: both of them would need it,
+        // and the camera they share is the only thing that knows the view is
+        // meant to be riding along.
+        if ($this->camera->isFollowing()) {
+            $this->render->focusOnSelectedPlayer();
+        }
 
         // The view follows the cat the panel is describing, down a cavern and
         // back up. Watching an empty surface while the cat one has selected is

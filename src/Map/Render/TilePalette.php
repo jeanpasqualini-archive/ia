@@ -500,6 +500,30 @@ class TilePalette
         };
     }
 
+    /**
+     * What a tile *stands on*.
+     *
+     * A flower is a plant in the meadow and a bramble is a tangle on it, not a
+     * kind of ground — which the cell path has always known, since it paints
+     * them as a coloured character over a grass background. `pixel()` answers
+     * for the thing rather than the ground, because a tile is half a cell
+     * there and only has room for one of the two.
+     *
+     * The isometric view has room for both, and needs this: painted with the
+     * thing's own colour, the ground under a flower comes out pink and the
+     * ground under a bramble comes out bare brown — a path, if anything,
+     * rather than something that stings. That reading is exactly the mistake
+     * the brambles were painted out of once already.
+     */
+    public static function groundFor(string $tile): string
+    {
+        return match ($tile) {
+            MapBuilder::FLEUR, MapBuilder::DIGITALE, MapBuilder::RONCE => MapBuilder::HERBE,
+            MapBuilder::CHAMPIGNON => MapBuilder::GALERIE,
+            default => $tile,
+        };
+    }
+
     public function sightEdgeColour(): Color
     {
         return RgbColor::fromHex(self::SIGHT_EDGE);
